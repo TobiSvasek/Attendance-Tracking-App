@@ -1,15 +1,12 @@
-import conf
-import pytz
-from flask import Flask, render_template, request, redirect, url_for, session, make_response, jsonify
+from flask import Flask, request, redirect, session, make_response
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from urllib.parse import urlsplit
 from flask_migrate import Migrate
-from flask_mail import Mail, Message
+from flask_mail import Mail
 from itsdangerous import URLSafeTimedSerializer
 import re
-from pyngrok import ngrok
 from dotenv import load_dotenv
 import os
 app = Flask(__name__, template_folder='templates')
