@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Email Sent{% endblock %}
+
+{% block content %}
+<form>
+    <h2>Email Sent</h2>
+    <p>An email has been sent with instructions to reset your password.</p>
+</form>
+
+<form action="{{ url_for('login') }}" method="get">
+    <button style="background-color: indianred"  type="submit">Back to login</button>
+</form>
+{% endblock %}

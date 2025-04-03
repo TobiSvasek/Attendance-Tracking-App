@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Clock History{% endblock %}
+
+{% block content %}
+<h1>Clock History for {{ employee.name }} {{ employee.surname }}</h1>
+<div class="clock-history-panel">
+    <div class="table-header">
+        <span>Date and Time</span>
+        <span>Status</span>
+    </div>
+    <ul class="scrollable-list">
+        {% for attendance in attendances %}
+            <li>
+                <span>{{ attendance.update_time.strftime('%d. %m. %Y %H:%M:%S') }}</span>
+                <span class="status-{{ attendance.status.name | lower | replace(' ', '') }}">{{ attendance.status.name }}</span>
+            </li>
+        {% endfor %}
+    </ul>
+</div>
+<form action="{{ url_for('clock') }}" method="get">
+    <button type="submit" style="background-color: indianred">Back</button>
+</form>
+{% endblock %}

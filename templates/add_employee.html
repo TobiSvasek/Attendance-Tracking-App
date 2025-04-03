@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}Add Employee{% endblock %}
+
+{% block content %}
+    <form method="post">
+        <input type="email" name="email" placeholder="Email" required class="form-input">
+        <input type="text" name="name" placeholder="Name" required class="form-input">
+        <input type="text" name="surname" placeholder="Surname" required class="form-input">
+        <label class="form-checkbox">
+            <input type="checkbox" name="is_admin"> Is Admin
+        </label>
+        <button type="submit">Add Employee</button>
+        {% if error %}
+            <p style="color: red;">{{ error }}</p>
+        {% endif %}
+    </form>
+    <form action="{{ url_for('clock') }}" method="get">
+        <button type="submit" style="background-color: indianred">Back</button>
+    </form>
+{% endblock %}

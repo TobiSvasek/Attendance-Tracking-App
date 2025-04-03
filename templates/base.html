@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Employee Manager{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="{{ url_for('static', filename='scripts/animations.js') }}" defer></script>
+    <link rel="icon" type="image" href="{{ url_for('static', filename='logo-small-n.png') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body class="{{ request.cookies.get('theme', 'light') }} flex-container">
+    <div class="content">
+        <div style="text-align: center; margin-top: 20px;">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" style="max-width: 200px; margin-top: 20px; margin-bottom: 20px;">
+        </div>
+        {% block content %}{% endblock %}
+    </div>
+    <footer>
+        <p>&copy; 2025 ImHere. All rights reserved.</p>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Delete Employee{% endblock %}
+
+{% block content %}
+    <h1>Delete Employee</h1>
+    <form method="post" onsubmit="return confirmDelete()">
+        <div class="employee-list">
+            {% for emp in employees %}
+                <label class="employee-box" data-id="{{ emp.id }}" onclick="toggleSelection(this, '{{ emp.id }}')">
+                    <span>{{ emp.name }} {{ emp.surname }}</span>
+                </label>
+            {% endfor %}
+        </div>
+        <input type="hidden" name="employee_ids" id="employee_ids">
+        <button type="submit" style="background-color: red;">Delete Selected Users</button>
+    </form>
+    {% if error %}
+        <p style="color: red; text-align: center">{{ error }}</p>
+    {% endif %}
+    <form action="{{ url_for('clock') }}" method="get">
+        <button type="submit" style="background-color: indianred;">Back</button>
+    </form>
+
+    <script>
+        function toggleSelection(element, employeeId) {
+            const selected = element.getAttribute('data-selected') === 'true';
+            element.setAttribute('data-selected', !selected);
+            element.style.backgroundColor = !selected ? '#4cae4c' : '';
+
+            const employeeIdsInput = document.getElementById('employee_ids');
+            let selectedIds = employeeIdsInput.value ? employeeIdsInput.value.split(',') : [];
+            if (!selected) {
+                selectedIds.push(employeeId);
+            } else {
+                selectedIds = selectedIds.filter(id => id !== employeeId);
+            }
+            employeeIdsInput.value = selectedIds.join(',');
+        }
+
+        function confirmDelete() {
+            return confirm('Are you sure you want to delete the selected users? This action cannot be undone.');
+        }
+    </script>
+{% endblock %}

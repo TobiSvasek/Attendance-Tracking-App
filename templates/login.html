@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Login{% endblock %}
+
+{% block content %}
+<form method="post">
+    <input type="text" name="email" placeholder="Email" required class="form-input">
+    <input type="password" name="password" placeholder="Password" required class="form-input">
+    <button type="submit">Login</button>
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% endif %}
+    {% if message %}
+    {% endif %}
+</form>
+<form action="{{ url_for('reset_request') }}" method="get">
+    <button style="background-color: cadetblue" type="submit">Reset Password</button>
+</form>
+<form action="{{ url_for('toggle_theme') }}" method="post">
+    <button type="submit" id="theme-toggle-button">
+        {% if request.cookies.get('theme', 'light') == 'light' %}
+            🌙
+        {% else %}
+            ☀️
+        {% endif %}
+    </button>
+</form>
+{% endblock %}

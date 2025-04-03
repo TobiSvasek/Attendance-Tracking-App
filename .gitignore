@@ -1,0 +1,32 @@
+# Virtual environment
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Python specific
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+*.pdb
+*.egg
+*.egg-info/
+dist/
+build/
+*.egg-info/
+*.eggs/
+*.manifest
+*.spec
+
+# Flask specific
+instance/
+.webassets-cache
+
+# Environment variables
+.env
+
+# PyCharm specific
+.idea/

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Clock In/Out{% endblock %}
+
+{% block content %}
+<h1><u>Admin Panel</u></h1>
+    <h2>Employees</h2>
+    <ul>
+        {% for employee in employees %}
+            <li>{{ employee.name }} -
+    {% if employee.is_present %}
+        <span style="color: green;">Present</span>
+    {% else %}
+        <span style="color: red;">Absent</span>
+    {% endif %}
+</li>
+        {% endfor %}
+    </ul>
+    <h2>Attendance Records</h2>
+    <ul>
+        {% for attendance in attendances %}
+            <li>Employee ID: {{ attendance.employee_id }}, Clock In: {{ attendance.clock_in_time }}, Clock Out: {{ attendance.clock_out_time }}, Total Time: {{ attendance.total_time }} hours</li>
+        {% endfor %}
+    </ul>
+<form action="{{ url_for('add_employee') }}" method="get">
+    <button type="submit">Add Employee</button>
+</form>
+<form action="{{ url_for('logout') }}" method="get">
+    <button type="submit" style="background-color: indianred">Logout</button>
+</form>
+{% endblock %}
