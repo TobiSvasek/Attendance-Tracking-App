@@ -23,31 +23,31 @@
   <div class="admin-panel">
     <h1><u>Admin Panel</u></h1>
     <h2>Employees</h2>
-    <div class="table-container">
-      <div class="table-header">
-        <span>Employee Name</span>
-        <span>Current Status</span>
-        <span>Last Update</span>
-      </div>
-      <div class="table-body">
-        {% for emp in employees %}
-          <a href="{{ url_for('view_clock_history', employee_id=emp.id) }}" class="table-row">
-            <span>
-              {{ emp.name }} {{ emp.surname }}
-              {% if emp.is_admin %}
-                <i class="fas fa-crown" style="color: gold;"></i>
-              {% endif %}
-            </span>
-            <span class="status-{{ emp.status.name | lower | replace(' ', '') }}">{{ emp.status.name }}</span>
-            {% if emp.attendances|length > 0 %}
-              <span>{{ emp.attendances[-1].update_time.strftime('%d. %m. %Y %H:%M:%S') }}</span>
-            {% else %}
-              <span>N/A</span>
-            {% endif %}
-          </a>
-        {% endfor %}
-      </div>
-    </div>
+<div class="table-container">
+  <div class="table-header">
+    <span>Employee Name</span>
+    <span>Current Status</span>
+    <span>Last Update</span>
+  </div>
+  <div class="table-body {% if employees|length > 4 %}scrollable-listA{% endif %}">
+    {% for emp in employees %}
+      <a href="{{ url_for('view_clock_history', employee_id=emp.id) }}" class="table-row">
+        <span>
+          {{ emp.name }} {{ emp.surname }}
+          {% if emp.is_admin %}
+            <i class="fas fa-crown" style="color: gold;"></i>
+          {% endif %}
+        </span>
+        <span class="status-{{ emp.status.name | lower | replace(' ', '') }}">{{ emp.status.name }}</span>
+        {% if emp.attendances|length > 0 %}
+          <span>{{ emp.attendances[-1].update_time.strftime('%d. %m. %Y %H:%M:%S') }}</span>
+        {% else %}
+          <span>N/A</span>
+        {% endif %}
+      </a>
+    {% endfor %}
+  </div>
+</div>
     <form action="{{ url_for('add_employee') }}" method="get">
       <button type="submit">Add Employee</button>
     </form>

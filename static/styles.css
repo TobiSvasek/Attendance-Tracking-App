@@ -121,6 +121,36 @@ body.dark .admin-panel {
     border-radius: 4px; /* Rounded corners for the scrollbar track */
 }
 
+.scrollable-listA {
+    max-height: 220px; /* Adjust the height as needed */
+    overflow-y: auto;
+    padding-right: 5px; /* Reduce padding to make it more compact */
+}
+
+.scrollable-listA li {
+    padding: 5px; /* Reduce padding to make it more compact */
+    border-bottom: 1px solid #ccc;
+    display: flex;
+    justify-content: space-between;
+}
+
+.scrollable-listA::-webkit-scrollbar {
+    width: 8px; /* Width of the scrollbar */
+}
+
+.scrollable-listA::-webkit-scrollbar-thumb {
+    background-color: #888; /* Color of the scrollbar thumb */
+    border-radius: 4px; /* Rounded corners for the scrollbar thumb */
+}
+
+.scrollable-listA::-webkit-scrollbar-thumb:hover {
+    background-color: #555; /* Color of the scrollbar thumb on hover */
+}
+
+.scrollable-listA::-webkit-scrollbar-track {
+    background-color: #f1f1f1; /* Color of the scrollbar track */
+    border-radius: 4px; /* Rounded corners for the scrollbar track */
+}
 .admin-panel li {
     padding: 10px;
     border-bottom: 1px solid #ccc;
