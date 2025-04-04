@@ -85,6 +85,76 @@ class Status(db.Model):
 def index():
     return redirect(url_for('login'))
 
+@app.route('/main', methods=['GET', 'POST'])
+def main_page():
+    if request.method == 'POST':
+        employee_id = request.form.get('employee_id')
+        return redirect(url_for('nfc_redirect', employee_id=employee_id))
+    return render_template('main.html')
+
+@app.route('/nfc_redirect', methods=['POST'])
+def nfc_redirect():
+    employee_id = request.form.get('employee_id')
+    employee = Employee.query.get(employee_id)
+    if not employee:
+        return redirect(url_for('main_page'))
+    else:
+        return redirect(url_for('employee_status', employee_id=employee_id))
+
+
+@app.route('/employee_status/<int:employee_id>', methods=['GET', 'POST'])
+def employee_status(employee_id):
+    employee = Employee.query.get(employee_id)
+    if not employee or not employee.is_authenticated:
+        return redirect(url_for('login'))
+
+    success_message = None
+    error_message = None
+
+    if request.method == 'POST':
+        status_id = request.form.get('status_id')
+        if status_id:
+            if employee.status_id == int(status_id):
+                success_message = "You are already in this status."
+            else:
+                employee.status_id = status_id
+                new_attendance = Attendance(employee_id=employee.id, status_id=status_id, update_time=datetime.now())
+                db.session.add(new_attendance)
+                db.session.commit()
+                success_message = "Status updated successfully!"
+
+    statuses = Status.query.all()
+    employees = Employee.query.all() if employee.is_admin else None
+
+    return render_template('employee_status.html', employee=employee, success_message=success_message, error_message=error_message, employees=employees, statuses=statuses)
+
+@app.route('/clock/<int:employee_id>', methods=['GET', 'POST'])
+def clock(employee_id):
+    employee = Employee.query.get(employee_id)
+    if not employee or not employee.is_authenticated:
+        return redirect(url_for('login'))
+
+    success_message = None
+    error_message = None
+
+    if request.method == 'POST':
+        status_id = request.form.get('status_id')
+        if status_id:
+            if employee.status_id == int(status_id):
+                success_message = "You are already in this status."
+            else:
+                employee.status_id = status_id
+                new_attendance = Attendance(employee_id=employee.id, status_id=status_id, update_time=datetime.now())
+                db.session.add(new_attendance)
+                db.session.commit()
+                success_message = "Status updated successfully!"
+
+    statuses = Status.query.all()
+    employees = Employee.query.all() if employee.is_admin else None
+    attendances = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.update_time.desc()).all()
+
+    return render_template('clock.html', employee=employee, success_message=success_message, error_message=error_message, employees=employees, statuses=statuses, attendances=attendances)
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     error = None
@@ -101,7 +171,7 @@ def login():
             db.session.commit()
             next_page = request.args.get('next')
             if not next_page or urlsplit(next_page).netloc != '':
-                next_page = url_for('clock')
+                next_page = url_for('clock', employee_id=employee.id)
             return redirect(next_page)
         else:
             error = "Invalid credentials. Please try again."
@@ -181,46 +251,19 @@ If you did not expect this email, please ignore it.
     msg.html = html
     mail.send(msg)
 
-@app.route('/clock', methods=['GET', 'POST'])
-def clock():
-    if 'employee_id' not in session:
-        return redirect(url_for('login'))
-
-    employee = Employee.query.get(session['employee_id'])
-    if not employee.is_authenticated:
-        return redirect(url_for('login'))
-
-    success_message = None
-    error_message = None
-
-    if request.method == 'POST':
-        status_id = request.form.get('status_id')
-        if status_id:
-            if employee.status_id == int(status_id):
-                success_message = "You are already in this status."
-            else:
-                employee.status_id = status_id
-                new_attendance = Attendance(employee_id=employee.id, status_id=status_id, update_time=datetime.now())
-                db.session.add(new_attendance)
-                db.session.commit()
-                success_message = "Status updated successfully!"
-
-    statuses = Status.query.all()
-    employees = Employee.query.all() if employee.is_admin else None
-
-    return render_template('clock.html', employee=employee, success_message=success_message, error_message=error_message, employees=employees, statuses=statuses)
-
 @app.route('/clock_history/<int:employee_id>')
 def view_clock_history(employee_id):
     if 'employee_id' not in session:
         return redirect(url_for('login'))
 
+    admin_id = session['employee_id']
     employee = Employee.query.get(employee_id)
     if not employee:
-        return redirect(url_for('clock'))
+        return redirect(url_for('clock', employee_id=admin_id))
 
     attendances = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.update_time.desc()).all()
-    return render_template('clock_history.html', employee=employee, attendances=attendances)
+    is_admin = Employee.query.get(admin_id).is_admin
+    return render_template('clock_history.html', employee=employee, attendances=attendances, is_admin=is_admin, admin_id=admin_id)
 
 import secrets
 import string

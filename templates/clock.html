@@ -23,31 +23,31 @@
   <div class="admin-panel">
     <h1><u>Admin Panel</u></h1>
     <h2>Employees</h2>
-<div class="table-container">
-  <div class="table-header">
-    <span>Employee Name</span>
-    <span>Current Status</span>
-    <span>Last Update</span>
-  </div>
-  <div class="table-body {% if employees|length > 4 %}scrollable-listA{% endif %}">
-    {% for emp in employees %}
-      <a href="{{ url_for('view_clock_history', employee_id=emp.id) }}" class="table-row">
-        <span>
-          {{ emp.name }} {{ emp.surname }}
-          {% if emp.is_admin %}
-            <i class="fas fa-crown" style="color: gold;"></i>
-          {% endif %}
-        </span>
-        <span class="status-{{ emp.status.name | lower | replace(' ', '') }}">{{ emp.status.name }}</span>
-        {% if emp.attendances|length > 0 %}
-          <span>{{ emp.attendances[-1].update_time.strftime('%d. %m. %Y %H:%M:%S') }}</span>
-        {% else %}
-          <span>N/A</span>
-        {% endif %}
-      </a>
-    {% endfor %}
-  </div>
-</div>
+    <div class="table-container">
+      <div class="table-header">
+        <span>Employee Name</span>
+        <span>Current Status</span>
+        <span>Last Update</span>
+      </div>
+      <div class="table-body {% if employees|length > 4 %}scrollable-listA{% endif %}">
+        {% for emp in employees %}
+          <a href="{{ url_for('view_clock_history', employee_id=emp.id) }}" class="table-row">
+            <span>
+              {{ emp.name }} {{ emp.surname }}
+              {% if emp.is_admin %}
+                <i class="fas fa-crown" style="color: gold;"></i>
+              {% endif %}
+            </span>
+            <span class="status-{{ emp.status.name | lower | replace(' ', '') }}">{{ emp.status.name }}</span>
+            {% if emp.attendances|length > 0 %}
+              <span>{{ emp.attendances[-1].update_time.strftime('%d. %m. %Y %H:%M:%S') }}</span>
+            {% else %}
+              <span>N/A</span>
+            {% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
     <form action="{{ url_for('add_employee') }}" method="get">
       <button type="submit">Add Employee</button>
     </form>
@@ -57,15 +57,23 @@
   </div>
 {% endif %}
 
-<form method="post">
-  <div class="formName">Your status:</div>
-  <div class="status-current status-{{ employee.status.name | lower | replace(' ', '') }}">{{ employee.status.name }}</div>
-  {% for status in statuses %}
-    {% if status.id != employee.status_id %}
-      <button type="submit" name="status_id" value="{{ status.id }}" class="status-{{ status.name | lower | replace(' ', '') }}">{{ status.name }}</button>
-    {% endif %}
-  {% endfor %}
-</form>
+{% if not employee.is_admin %}
+<h2>Attendance History</h2>
+<div class="clock-history-panel">
+  <div class="table-header">
+    <span>Date and Time</span>
+    <span>Status</span>
+  </div>
+  <ul class="scrollable-list">
+    {% for attendance in attendances %}
+      <li>
+        <span>{{ attendance.update_time.strftime('%d. %m. %Y %H:%M:%S') }}</span>
+        <span class="status-{{ attendance.status.name | lower | replace(' ', '') }}">{{ attendance.status.name }}</span>
+      </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
 
 <form action="{{ url_for('logout') }}" method="post">
   <button type="submit" style="background-color: indianred">Logout</button>
