@@ -5,18 +5,12 @@
 {% block content %}
 <h1>Welcome, {{ employee.name }}!</h1>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    <ul class="flashes">
-      {% for category, message in messages %}
-        <li class="{{ category }}" id="success-message">{{ message }}</li>
-      {% endfor %}
-    </ul>
-  {% endif %}
-{% endwith %}
+{% if success_message %}
+  <p id="success-message" class="success-message" style="color: green; text-align: center">{{ success_message }}</p>
+{% endif %}
 
 {% if error_message %}
-  <p style="color: red;">{{ error_message }}</p>
+  <p style="color: red; text-align: center">{{ error_message }}</p>
 {% endif %}
 
 <form method="post">
@@ -34,12 +28,12 @@
 </form>
 
 <script>
-  // Hide the success message after 5 seconds
-  setTimeout(function() {
-    var successMessage = document.getElementById('success-message');
-    if (successMessage) {
-      successMessage.style.display = 'none';
-    }
-  }, 5000);
+  document.addEventListener('DOMContentLoaded', function() {
+    // Hide the success message after 5 seconds
+    setTimeout(function() {
+      const msg = document.getElementById('success-message');
+      if (msg) msg.style.display = 'none';
+    }, 5000);
+    });
 </script>
 {% endblock %}
