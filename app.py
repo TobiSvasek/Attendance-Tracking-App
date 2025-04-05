@@ -298,8 +298,8 @@ def add_employee():
 
         send_set_password_email(new_employee)
 
-        flash(f'User {name} {surname} created and email sent to {email}.', 'success')
-        return redirect(url_for('clock'))
+        success_message = f'User {name} {surname} created and email sent to {email}.'
+        return redirect(url_for('clock', employee_id=new_employee.id))
 
     return render_template('add_employee.html', error=error)
 
@@ -310,7 +310,7 @@ def delete_employee():
 
     employee = Employee.query.get(session['employee_id'])
     if not employee.is_admin:
-        return redirect(url_for('clock'))
+        return redirect(url_for('clock', employee_id=employee.id))
 
     error = None
     if request.method == 'POST':
@@ -324,12 +324,12 @@ def delete_employee():
                     Attendance.query.filter_by(employee_id=emp_id).delete()
                     db.session.delete(employee_to_delete)
             db.session.commit()
-            return redirect(url_for('clock'))
+            return redirect(url_for('clock', employee_id=employee.id))
         else:
             error = "No employees selected for deletion."
 
     employees = Employee.query.filter_by(is_admin=False).all()
-    return render_template('delete_employee.html', employees=employees, error=error)
+    return render_template('delete_employee.html', employees=employees, error=error, employee_id=employee.id)
 
 @app.route('/toggle_theme', methods=['POST'])
 def toggle_theme():
