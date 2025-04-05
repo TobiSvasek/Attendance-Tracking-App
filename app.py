@@ -299,7 +299,7 @@ def add_employee():
         send_set_password_email(new_employee)
 
         success_message = f'User {name} {surname} created and email sent to {email}.'
-        return redirect(url_for('clock', employee_id=new_employee.id))
+        return redirect(url_for('clock', employee_id=session['employee_id']))
 
     return render_template('add_employee.html', error=error)
 
