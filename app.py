@@ -9,6 +9,12 @@ from itsdangerous import URLSafeTimedSerializer
 import re
 from dotenv import load_dotenv
 import os
+import base64
+from flask import current_app, url_for, render_template
+from flask_mail import Message
+import secrets
+import string
+from pyngrok import ngrok, conf
 app = Flask(__name__, template_folder='templates')
 
 load_dotenv()
@@ -106,7 +112,7 @@ def nfc_redirect():
 def employee_status(employee_id):
     employee = Employee.query.get(employee_id)
     if not employee or not employee.is_authenticated:
-        return redirect(url_for('login'))
+        return redirect(url_for('main_page'))
 
     success_message = None
     error_message = None
@@ -206,11 +212,6 @@ def reset_token(token):
         return redirect(url_for('login', message='Password successfully reset.'))
     return render_template('reset_token.html')
 
-
-import base64
-from flask import current_app, url_for, render_template
-from flask_mail import Message
-
 def send_reset_email(user):
     token = user.generate_reset_token()
     reset_url = url_for('reset_token', token=token, _external=True)
@@ -265,14 +266,9 @@ def view_clock_history(employee_id):
     is_admin = Employee.query.get(admin_id).is_admin
     return render_template('clock_history.html', employee=employee, attendances=attendances, is_admin=is_admin, admin_id=admin_id)
 
-import secrets
-import string
-
 def generate_random_password(length=12):
     characters = string.ascii_letters + string.digits + string.punctuation
     return ''.join(secrets.choice(characters) for i in range(length))
-
-from flask import flash
 
 @app.route('/add_employee', methods=['GET', 'POST'])
 def add_employee():
@@ -299,7 +295,7 @@ def add_employee():
         send_set_password_email(new_employee)
 
         success_message = f'User {name} {surname} created and email sent to {email}.'
-        return redirect(url_for('clock', employee_id=new_employee.id))
+        return redirect(url_for('clock', employee_id=session['employee_id']))
 
     return render_template('add_employee.html', error=error)
 
@@ -346,8 +342,6 @@ def logout():
     response = make_response(redirect(url_for('login')))
     response.set_cookie('theme', theme, max_age=60*60*24*30)  # Retain the theme cookie
     return response
-
-from pyngrok import ngrok, conf
 
 # Set the path to your ngrok configuration file
 conf.get_default().config_path = r"C:\Users\HP\AppData\Local\ngrok\ngrok.yml"
