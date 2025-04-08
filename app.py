@@ -15,6 +15,8 @@ from flask_mail import Message
 import secrets
 import string
 from pyngrok import ngrok, conf
+import random
+
 app = Flask(__name__, template_folder='templates')
 
 load_dotenv()
@@ -35,8 +37,8 @@ migrate = Migrate(app, db)
 class Employee(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    name = db.Column(db.String(100), nullable=False)
-    surname = db.Column(db.String(100), nullable=False)
+    name = db.Column(db.String(100), nullable=True)  # Changed to nullable=True
+    surname = db.Column(db.String(100), nullable=True)  # Changed to nullable=True
     password_hash = db.Column(db.String(255), nullable=False)
     status_id = db.Column(db.Integer, db.ForeignKey('status.id'), nullable=True)
     is_admin = db.Column(db.Boolean, default=False)
@@ -232,20 +234,16 @@ If you did not make this request, simply ignore this email and no changes will b
 
     mail.send(msg)
 
-def send_set_password_email(user):
+def send_set_details_email(user):
     token = user.generate_reset_token()
-    set_password_url = url_for('reset_token', token=token, _external=True)
+    set_details_url = url_for('set_details', token=token, _external=True)
 
-    # Read the logo image and encode it in base64
-    with current_app.open_resource('static/logo.png', 'rb') as image_file:
-        logo_base64 = base64.b64encode(image_file.read()).decode('utf-8')
+    html = render_template('email_templates/set_password_email.html', set_details=set_details_url)
 
-    html = render_template('email_templates/set_password_email.html', set_password_url=set_password_url, logo_base64=logo_base64)
-
-    msg = Message('Set Your Password',
+    msg = Message('Set Your Account Details',
                   recipients=[user.email])
-    msg.body = f'''A user account has been created for you. To set your password, visit the following link:
-{set_password_url}
+    msg.body = f'''A user account has been created for you. To set your name, surname, and password, visit the following link:
+{set_details_url}
 
 If you did not expect this email, please ignore it.
 '''
@@ -270,13 +268,14 @@ def generate_random_password(length=12):
     characters = string.ascii_letters + string.digits + string.punctuation
     return ''.join(secrets.choice(characters) for i in range(length))
 
+
+FIRST_NAMES = ["John", "Jane", "Alex", "Emily", "Chris", "Taylor", "Jordan", "Morgan"]
+SURNAMES = ["Smith", "Johnson", "Brown", "Williams", "Jones", "Garcia", "Miller", "Davis"]
 @app.route('/add_employee', methods=['GET', 'POST'])
 def add_employee():
     error = None
     if request.method == 'POST':
         email = request.form['email']
-        name = request.form['name']
-        surname = request.form['surname']
         isAdmin = 'is_admin' in request.form  # Convert to boolean
 
         # Check if the user already exists
@@ -285,19 +284,55 @@ def add_employee():
             error = f"User with email {email} already exists."
             return render_template('add_employee.html', error=error)
 
-        default_password = generate_random_password()  # Generate a random password
+        # Generate random name, surname, and password
+        random_name = random.choice(FIRST_NAMES)
+        random_surname = random.choice(SURNAMES)
+        random_password = generate_random_password()
 
-        new_employee = Employee(email=email, name=name, surname=surname, is_admin=isAdmin)
-        new_employee.set_password(default_password)  # Set the random password
+        # Hash the password
+        hashed_password = generate_password_hash(random_password)
+
+        # Create a new employee with random name, surname, and hashed password
+        new_employee = Employee(
+            email=email,
+            name=random_name,
+            surname=random_surname,
+            password_hash=hashed_password,
+            is_admin=isAdmin
+        )
         db.session.add(new_employee)
         db.session.commit()
 
-        send_set_password_email(new_employee)
+        # Send an email to the employee with their temporary password
+        send_set_details_email(new_employee)
 
-        success_message = f'User {name} {surname} created and email sent to {email}.'
+        success_message = f'User created with name {random_name} {random_surname} and email sent to {email}.'
         return redirect(url_for('clock', employee_id=session['employee_id']))
 
     return render_template('add_employee.html', error=error)
+
+@app.route('/set_details/<token>', methods=['GET', 'POST'])
+def set_details(token):
+    user = Employee.verify_reset_token(token)
+    if not user:
+        return render_template('link_expired.html')
+
+    if request.method == 'POST':
+        name = request.form['name']
+        surname = request.form['surname']
+        password = request.form['password']
+
+        if not is_strong_password(password):
+            error = "Password is not strong enough. It must be at least 8 characters long, contain an uppercase letter, a lowercase letter, and a number."
+            return render_template('set_details.html', error=error)
+
+        user.name = name
+        user.surname = surname
+        user.set_password(password)
+        db.session.commit()
+        return redirect(url_for('login', message='Details successfully set.'))
+
+    return render_template('set_details.html')
 
 @app.route('/delete_employee', methods=['GET', 'POST'])
 def delete_employee():
