@@ -10,6 +10,18 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body class="{{ request.cookies.get('theme', 'light') }} flex-container">
+<header>
+
+    <form action="{{ url_for('toggle_theme') }}" method="post" class="theme-toggle-form">
+        <button type="submit" id="theme-toggle-button">
+            {% if request.cookies.get('theme', 'light') == 'light' %}
+                🌙
+            {% else %}
+                ☀️
+            {% endif %}
+        </button>
+    </form>
+</header>
     <div class="content">
         <div style="text-align: center; margin-top: 20px;">
             <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" style="max-width: 200px; margin-top: 20px; margin-bottom: 20px;">

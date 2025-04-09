@@ -19,6 +19,8 @@ from smartcard.Exceptions import NoCardException
 from smartcard.util import toHexString
 from flask import jsonify
 import threading
+from datetime import datetime, timedelta
+import hashlib
 
 app = Flask(__name__, template_folder='templates')
 
@@ -296,12 +298,12 @@ def add_employee():
             error = "No NFC card scanned. Please scan the card first."
         elif Employee.query.filter_by(email=email).first():
             error = "An employee with this email already exists."
-        elif Employee.query.filter_by(uid=uid).first():
+        elif Employee.query.filter_by(uid=hashlib.sha256(uid.encode()).hexdigest()).first():
             error = "An employee with this NFC UID already exists."
         else:
             new_employee = Employee(
                 email=email,
-                uid=uid,
+                uid=hashlib.sha256(uid.encode()).hexdigest(),  # Hash the UID before saving
                 is_admin=isAdmin,
                 name=FIRST_NAME,
                 surname=SURNAME
@@ -427,7 +429,7 @@ def check_card():
     """Checks if an NFC card has been scanned and returns the redirect URL."""
     global scanned_card_uid
     if scanned_card_uid:
-        uid = scanned_card_uid
+        uid = hashlib.sha256(scanned_card_uid.encode()).hexdigest()  # Hash the UID
         scanned_card_uid = None  # Reset the UID after processing
         employee = Employee.query.filter_by(uid=uid).first()
         if employee:
@@ -442,6 +444,42 @@ def check_card_uid():
         scanned_card_uid = None  # Reset after reading
         return jsonify({'uid': uid})
     return jsonify({'uid': None})
+
+@app.route('/fetch_attendance/<int:employee_id>', methods=['GET'])
+def fetch_attendance(employee_id):
+    month = int(request.args.get('month'))
+    year = int(request.args.get('year'))
+    start_date = datetime(year, month, 1)
+    end_date = datetime(year, month + 1, 1) if month < 12 else datetime(year + 1, 1, 1)
+
+    attendance = Attendance.query.filter(
+        Attendance.employee_id == employee_id,
+        Attendance.update_time >= start_date,
+        Attendance.update_time < end_date
+    ).all()
+
+    attendance_dates = [a.update_time.strftime('%Y-%m-%d') for a in attendance]
+    return jsonify({'attendance': list(set(attendance_dates))})
+
+
+@app.route('/fetch_attendance_day/<int:employee_id>', methods=['GET'])
+def fetch_attendance_day(employee_id):
+    date = request.args.get('date')
+    start_date = datetime.strptime(date, '%Y-%m-%d')
+    end_date = start_date + timedelta(days=1)
+
+    attendance = Attendance.query.filter(
+        Attendance.employee_id == employee_id,
+        Attendance.update_time >= start_date,
+        Attendance.update_time < end_date
+    ).all()
+
+    attendance_records = [{
+        'time': a.update_time.strftime('%H:%M:%S'),
+        'status': a.status.name
+    } for a in attendance]
+
+    return jsonify({'attendance': attendance_records})
 
 # Set the path to your ngrok configuration file
 conf.get_default().config_path = r"C:\Users\HP\AppData\Local\ngrok\ngrok.yml"
