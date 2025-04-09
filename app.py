@@ -9,13 +9,17 @@ from itsdangerous import URLSafeTimedSerializer
 import re
 from dotenv import load_dotenv
 import os
-import base64
 from flask import current_app, url_for, render_template
 from flask_mail import Message
 import secrets
 import string
 from pyngrok import ngrok, conf
-import random
+import time
+from smartcard.System import readers
+from smartcard.Exceptions import NoCardException
+from smartcard.util import toHexString
+from flask import jsonify
+import threading
 
 app = Flask(__name__, template_folder='templates')
 
@@ -40,6 +44,7 @@ class Employee(db.Model):
     name = db.Column(db.String(100), nullable=True)  # Changed to nullable=True
     surname = db.Column(db.String(100), nullable=True)  # Changed to nullable=True
     password_hash = db.Column(db.String(255), nullable=False)
+    uid = db.Column(db.String(50), unique=True, nullable=True)
     status_id = db.Column(db.Integer, db.ForeignKey('status.id'), nullable=True)
     is_admin = db.Column(db.Boolean, default=False)
     is_authenticated = db.Column(db.Boolean, default=False)
@@ -248,6 +253,10 @@ def send_set_details_email(user):
 If you did not expect this email, please ignore it.
 '''
     msg.html = html
+
+    with current_app.open_resource('static/logo.png') as fp:
+        msg.attach('logo.png', 'image/png', fp.read(), 'inline', headers={'Content-ID': '<logo_cid>'})
+
     mail.send(msg)
 
 @app.route('/clock_history/<int:employee_id>')
@@ -269,8 +278,8 @@ def generate_random_password(length=12):
     return ''.join(secrets.choice(characters) for i in range(length))
 
 
-FIRST_NAMES = ["John", "Jane", "Alex", "Emily", "Chris", "Taylor", "Jordan", "Morgan"]
-SURNAMES = ["Smith", "Johnson", "Brown", "Williams", "Jones", "Garcia", "Miller", "Davis"]
+FIRST_NAME = "NEW"
+SURNAME = "USER"
 @app.route('/add_employee', methods=['GET', 'POST'])
 def add_employee():
     error = None
@@ -285,8 +294,8 @@ def add_employee():
             return render_template('add_employee.html', error=error)
 
         # Generate random name, surname, and password
-        random_name = random.choice(FIRST_NAMES)
-        random_surname = random.choice(SURNAMES)
+        name = FIRST_NAME
+        surname = SURNAME
         random_password = generate_random_password()
 
         # Hash the password
@@ -295,8 +304,8 @@ def add_employee():
         # Create a new employee with random name, surname, and hashed password
         new_employee = Employee(
             email=email,
-            name=random_name,
-            surname=random_surname,
+            name=name,
+            surname=surname,
             password_hash=hashed_password,
             is_admin=isAdmin
         )
@@ -306,7 +315,7 @@ def add_employee():
         # Send an email to the employee with their temporary password
         send_set_details_email(new_employee)
 
-        success_message = f'User created with name {random_name} {random_surname} and email sent to {email}.'
+        success_message = f'User created with name {name} {surname} and email sent to {email}.'
         return redirect(url_for('clock', employee_id=session['employee_id']))
 
     return render_template('add_employee.html', error=error)
@@ -377,6 +386,53 @@ def logout():
     response = make_response(redirect(url_for('login')))
     response.set_cookie('theme', theme, max_age=60*60*24*30)  # Retain the theme cookie
     return response
+
+# Global variable to store the scanned card UID
+scanned_card_uid = None
+
+def nfc_card_scanner():
+    """Continuously scans for NFC cards and updates the scanned UID."""
+    global scanned_card_uid
+    r = readers()
+    if not r:
+        print("No NFC reader detected.")
+        return
+
+    reader = r[0]
+    connection = reader.createConnection()
+
+    while True:
+        try:
+            connection.connect()
+            GET_UID = [0xFF, 0xCA, 0x00, 0x00, 0x00]
+            response, sw1, sw2 = connection.transmit(GET_UID)
+
+            if sw1 == 0x90 and sw2 == 0x00:
+                uid = toHexString(response)
+                if scanned_card_uid != uid:
+                    scanned_card_uid = uid
+                    print(f"Card detected: {uid}")
+            else:
+                scanned_card_uid = None
+        except NoCardException:
+            scanned_card_uid = None
+        except Exception as e:
+            print(f"Error: {e}")
+
+# Start the NFC scanner in a separate thread
+threading.Thread(target=nfc_card_scanner, daemon=True).start()
+
+@app.route('/check_card', methods=['GET'])
+def check_card():
+    """Checks if an NFC card has been scanned and returns the redirect URL."""
+    global scanned_card_uid
+    if scanned_card_uid:
+        uid = scanned_card_uid
+        scanned_card_uid = None  # Reset the UID after processing
+        employee = Employee.query.filter_by(uid=uid).first()
+        if employee:
+            return jsonify({'redirect_url': url_for('employee_status', employee_id=employee.id)})
+    return jsonify({'redirect_url': None})
 
 # Set the path to your ngrok configuration file
 conf.get_default().config_path = r"C:\Users\HP\AppData\Local\ngrok\ngrok.yml"

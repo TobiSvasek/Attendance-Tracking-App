@@ -4,22 +4,28 @@
 
 {% block content %}
 <h1>Please scan your card below</h1>
-<div style="text-align: center; margin-top: 50px;">
-    <i class="fas fa-rss" style="font-size: 100px; color: #5cb85c;"></i>
+<div style="text-align: center; margin-top: 80px;">
+    <i class="fas fa-rss" style="font-size: 180px; color: #5cb85c;"></i>
 </div>
-<form id="nfc-form" method="post" action="{{ url_for('nfc_redirect') }}" style="display: none;">
-    <input type="hidden" name="employee_id" id="employee_id">
-</form>
 <script>
-    // Simulate NFC card detection
     document.addEventListener('DOMContentLoaded', function() {
-        // Replace this with actual NFC detection logic
-        setTimeout(function() {
-            // Simulate NFC card detection
-            const employeeId = 6; // Replace with actual employee ID from NFC card
-            document.getElementById('employee_id').value = employeeId;
-            document.getElementById('nfc-form').submit();
-        }, 10000); // Simulate a 10-second delay
+        function checkCard() {
+            fetch('/check_card')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.redirect_url) {
+                        // Redirect to the employee_status page
+                        window.location.href = data.redirect_url;
+                    } else {
+                        // Retry after 1 second
+                        setTimeout(checkCard, 1000);
+                    }
+                })
+                .catch(error => console.error('Error checking card:', error));
+        }
+
+        // Start polling for NFC card detection
+        checkCard();
     });
 </script>
 {% endblock %}

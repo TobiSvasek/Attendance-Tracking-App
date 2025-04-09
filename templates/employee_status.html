@@ -35,5 +35,13 @@
       if (msg) msg.style.display = 'none';
     }, 5000);
     });
+
+  setTimeout(function() {
+    const successMessage = document.getElementById('success-message');
+    if (successMessage) {
+       successMessage.style.display = 'none';
+       window.location.href = "{{ url_for('main_page') }}";
+     }
+   }, 5000);
 </script>
 {% endblock %}
