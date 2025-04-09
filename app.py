@@ -281,41 +281,41 @@ FIRST_NAME = "NEW"
 SURNAME = "USER"
 @app.route('/add_employee', methods=['GET', 'POST'])
 def add_employee():
+    global scanned_card_uid
     error = None
+
+    if 'employee_id' not in session:
+        return redirect(url_for('login'))
+
     if request.method == 'POST':
         email = request.form['email']
-        isAdmin = 'is_admin' in request.form  # Convert to boolean
+        uid = request.form.get('uid')
+        isAdmin = 'is_admin' in request.form
 
-        # Check if the user already exists
-        existing_employee = Employee.query.filter_by(email=email).first()
-        if existing_employee:
-            error = f"User with email {email} already exists."
-            return render_template('add_employee.html', error=error)
+        if not uid:
+            error = "No NFC card scanned. Please scan the card first."
+        elif Employee.query.filter_by(email=email).first():
+            error = "An employee with this email already exists."
+        elif Employee.query.filter_by(uid=uid).first():
+            error = "An employee with this NFC UID already exists."
+        else:
+            new_employee = Employee(
+                email=email,
+                uid=uid,
+                is_admin=isAdmin,
+                name=FIRST_NAME,
+                surname=SURNAME
+            )
+            random_password = generate_random_password()
+            new_employee.set_password(random_password)
+            db.session.add(new_employee)
+            db.session.commit()
 
-        # Generate random name, surname, and password
-        name = FIRST_NAME
-        surname = SURNAME
-        random_password = generate_random_password()
+            send_set_details_email(new_employee)
+            scanned_card_uid = None  # Clear UID after assigning
 
-        # Hash the password
-        hashed_password = generate_password_hash(random_password)
-
-        # Create a new employee with random name, surname, and hashed password
-        new_employee = Employee(
-            email=email,
-            name=name,
-            surname=surname,
-            password_hash=hashed_password,
-            is_admin=isAdmin
-        )
-        db.session.add(new_employee)
-        db.session.commit()
-
-        # Send an email to the employee with their temporary password
-        send_set_details_email(new_employee)
-
-        success_message = f'User created with name {name} {surname} and email sent to {email}.'
-        return redirect(url_for('clock', employee_id=session['employee_id']))
+            # Redirect to the same page to refresh
+            return redirect(url_for('add_employee'))
 
     return render_template('add_employee.html', error=error)
 
@@ -337,6 +337,7 @@ def set_details(token):
         user.name = name
         user.surname = surname
         user.set_password(password)
+        user.is_authenticated = True  # Set is_authenticated to True
         db.session.commit()
         return redirect(url_for('login', message='Details successfully set.'))
 
@@ -432,6 +433,15 @@ def check_card():
         if employee:
             return jsonify({'redirect_url': url_for('employee_status', employee_id=employee.id)})
     return jsonify({'redirect_url': None})
+
+@app.route('/check_card_uid', methods=['GET'])
+def check_card_uid():
+    global scanned_card_uid
+    if scanned_card_uid:
+        uid = scanned_card_uid
+        scanned_card_uid = None  # Reset after reading
+        return jsonify({'uid': uid})
+    return jsonify({'uid': None})
 
 # Set the path to your ngrok configuration file
 conf.get_default().config_path = r"C:\Users\HP\AppData\Local\ngrok\ngrok.yml"

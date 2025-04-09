@@ -3,12 +3,24 @@
 {% block title %}Add Employee{% endblock %}
 
 {% block content %}
+    <h2>Add New Employee</h2>
+
     <form method="post">
         <input type="email" name="email" placeholder="Email" required class="form-input">
+
+        <!-- Hidden field for UID -->
+        <input type="hidden" name="uid" id="uid">
+
+        <!-- Button to start scanning -->
+        <button style="background-color: #555454" type="button" id="scan-uid-button">Scan NFC Card</button>
+        <p id="uid-display" style="color: blue;"></p>
+
         <label class="form-checkbox">
             <input type="checkbox" name="is_admin"> Is Admin
         </label>
+
         <button type="submit">Add Employee</button>
+
         {% if error %}
             <p style="color: red;">{{ error }}</p>
         {% endif %}
@@ -16,7 +28,36 @@
             <p style="color: green;">{{ success_message }}</p>
         {% endif %}
     </form>
+
+    <!-- Back button -->
     <form action="{{ url_for('clock', employee_id=session['employee_id']) }}" method="get">
         <button type="submit" style="background-color: indianred;">Back</button>
     </form>
+
+    <script>
+        document.getElementById('scan-uid-button').addEventListener('click', function () {
+    const display = document.getElementById('uid-display');
+    display.innerText = "Waiting for NFC card...";
+
+    function checkCard() {
+        fetch('/check_card_uid')
+            .then(response => response.json())
+            .then(data => {
+                if (data.uid) {
+                    document.getElementById('uid').value = data.uid;
+                    display.innerText = `Scanned UID: ${data.uid}`;
+                } else {
+                    setTimeout(checkCard, 1000); // Keep polling
+                }
+            })
+            .catch(error => {
+                console.error('Error checking card:', error);
+                display.innerText = "Error checking card.";
+            });
+    }
+
+    checkCard();
+});
+
+    </script>
 {% endblock %}
