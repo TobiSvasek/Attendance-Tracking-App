@@ -530,6 +530,11 @@ body.dark #theme-toggle-button {
     gap: 5px;
 }
 
+.calendar-weekdays{
+    border: #6c757d;
+    background-color: #6c757d;
+}
+
 .calendar-weekdays span, .calendar-days span {
     display: flex;
     justify-content: center;
@@ -543,10 +548,12 @@ body.dark #theme-toggle-button {
     width: 25px; /* Adjust width as needed */
     height: 25px; /* Adjust height as needed */
     line-height: 40px; /* Center the text vertically */
-    margin: 10px; /* Add spacing between the numbers */
     border-radius: 50%; /* Keep the circle shape */
     text-align: center;
     cursor: pointer;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    margin-left: 18px;
 }
 
 .calendar-days .day.present {
@@ -556,9 +563,10 @@ body.dark #theme-toggle-button {
     display: flex;
     justify-content: center;
     align-items: center;
-    width: 40px; /* Adjust size as needed */
-    height: 40px; /* Adjust size as needed */
-    margin: auto; /* Center the circle */
+    width: 30px; /* Adjust size as needed */
+    height: 30px; /* Adjust size as needed */
+    margin-left: 15px;
+    margin-top: 15px;
 }
 
 .calendar-days .day.present:hover {
@@ -567,6 +575,27 @@ body.dark #theme-toggle-button {
 
 .calendar-days .empty {
     visibility: hidden;
+}
+
+@media (max-width: 600px) {
+    .calendar {
+        padding: 10px; /* Add padding for smaller screens */
+    }
+
+    .calendar-weekdays, .calendar-days {
+        grid-template-columns: repeat(7, minmax(30px, 1fr)); /* Adjust column size for smaller screens */
+    }
+
+    .calendar-days .day {
+        font-size: 12px; /* Reduce font size for smaller screens */
+    }
+
+    .calendar-days .day.present {
+        width: 30px; /* Smaller size for phones */
+        height: 30px; /* Smaller size for phones */
+        font-size: 12px; /* Adjust font size */
+        margin-right: 5px;
+    }
 }
 
 body.light .calendar {
@@ -587,6 +616,11 @@ body.light .calendar-days span {
     background-color: transparent; /* Remove background */
     color: #333; /* Keep text color for visibility */
     border: none; /* Remove any borders */
+}
+
+body.light .calendar-weekdays {
+    background-color: #e0e0e3; /* Keep the gray background for weekdays */
+    color: #323232; /* Keep the text color white */
 }
 
 body.light .calendar-days .day.present {
