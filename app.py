@@ -14,7 +14,6 @@ from flask_mail import Message
 import secrets
 import string
 from pyngrok import ngrok, conf
-import time
 from smartcard.System import readers
 from smartcard.Exceptions import NoCardException
 from smartcard.util import toHexString
