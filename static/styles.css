@@ -569,6 +569,19 @@ body.dark #theme-toggle-button {
     margin-top: 15px;
 }
 
+.calendar-days .day.current-day {
+    background-color: #8f938f;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 30px; /* Adjust size as needed */
+    height: 30px; /* Adjust size as needed */
+    margin-left: 15px;
+    margin-top: 15px;
+}
+
 .calendar-days .day.present:hover {
     background-color: #4cae4c; /* Slightly lighter green on hover */
 }

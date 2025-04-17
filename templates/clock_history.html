@@ -53,38 +53,39 @@
         }
 
         function renderCalendar(attendance) {
-            const month = currentDate.getMonth();
-            const year = currentDate.getFullYear();
-            const firstDay = new Date(year, month, 1).getDay();
-            const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const month = currentDate.getMonth();
+    const year = currentDate.getFullYear();
+    const today = new Date();
 
-            calendarDays.innerHTML = '';
-            monthYear.textContent = currentDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-            // Add empty days for the first week
-            for (let i = 0; i < firstDay; i++) {
-                calendarDays.innerHTML += '<span class="empty"></span>';
-            }
+    calendarDays.innerHTML = '';
+    monthYear.textContent = currentDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
-            // Add days of the month
-            for (let day = 1; day <= daysInMonth; day++) {
-                const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                const isPresent = attendance.includes(date);
-                calendarDays.innerHTML += `
-                    <span class="day ${isPresent ? 'present' : ''}" data-date="${date}">
-                        ${day}
-                    </span>`;
-            }
+    for (let i = 0; i < firstDay; i++) {
+        calendarDays.innerHTML += '<span class="empty"></span>';
+    }
 
-            // Add click event to present days
-            document.querySelectorAll('.day.present').forEach(day => {
-                day.addEventListener('click', function () {
-                    const date = this.getAttribute('data-date');
-                    selectedDate.textContent = date;
-                    fetchAttendanceForDay(date);
-                });
-            });
-        }
+    for (let day = 1; day <= daysInMonth; day++) {
+        const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const isPresent = attendance.includes(date);
+        const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
+
+        calendarDays.innerHTML += `
+          <span class="day ${isPresent ? 'present' : ''} ${isToday ? 'current-day' : ''}" data-date="${date}">
+            ${day}
+          </span>`;
+    }
+
+    document.querySelectorAll('.day.present').forEach(day => {
+        day.addEventListener('click', function () {
+            const date = this.getAttribute('data-date');
+            selectedDate.textContent = date;
+            fetchAttendanceForDay(date);
+        });
+    });
+}
 
         function fetchAttendanceForDay(date) {
             fetch(`/fetch_attendance_day/${employeeId}?date=${date}`)
