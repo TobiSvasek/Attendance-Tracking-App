@@ -375,13 +375,19 @@ def delete_employee():
             ids_to_delete = [int(emp_id) for emp_id in employee_ids.split(',') if emp_id.isdigit()]
             employees_to_delete = Employee.query.filter(Employee.id.in_(ids_to_delete)).all()
 
-            for emp in employees_to_delete:
-                db.session.delete(emp)
-            db.session.commit()
+            non_admin_employees = [emp for emp in employees_to_delete if not emp.is_admin]
+
+            if not non_admin_employees:
+                error = "No valid employees selected for deletion."
+            else:
+                for emp in non_admin_employees:
+                    db.session.delete(emp)
+                db.session.commit()
         else:
             error = "No employees selected for deletion."
 
-    employees = Employee.query.all()
+    # Fetch only non-admin employees
+    employees = Employee.query.filter_by(is_admin=False).all()
     return render_template('delete_employee.html', employees=employees, error=error)
 
 @app.route('/toggle_theme', methods=['POST'])
