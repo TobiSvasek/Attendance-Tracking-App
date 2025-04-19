@@ -131,7 +131,6 @@ def nfc_redirect():
     else:
         return redirect(url_for('employee_status', employee_id=employee_id))
 
-
 @app.route('/employee_status/<int:employee_id>', methods=['GET', 'POST'])
 def employee_status(employee_id):
     employee = Employee.query.get(employee_id)
@@ -157,8 +156,6 @@ def employee_status(employee_id):
     employees = Employee.query.all() if employee.is_admin else None
 
     return render_template('employee_status.html', employee=employee, success_message=success_message, error_message=error_message, employees=employees, statuses=statuses)
-
-
 
 @app.route('/clock/<int:employee_id>', methods=['GET', 'POST'])
 def clock(employee_id):
