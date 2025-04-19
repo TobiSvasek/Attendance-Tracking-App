@@ -49,6 +49,7 @@ class Employee(db.Model):
     status_id = db.Column(db.Integer, db.ForeignKey('status.id'), nullable=True)
     is_admin = db.Column(db.Boolean, default=False)
     is_authenticated = db.Column(db.Boolean, default=False)
+    session_token = db.Column(db.String(64), nullable=True)
 
     status = db.relationship('Status', backref='employees')
     attendances = db.relationship('Attendance', backref='employee', lazy=True)
@@ -95,6 +96,21 @@ class Status(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)
 
+def generate_session_token():
+    return secrets.token_hex(32)
+
+def is_valid_session():
+    employee_id = session.get('employee_id')
+    session_token = session.get('session_token')
+
+    if not employee_id or not session_token:
+        return False
+
+    employee = Employee.query.get(employee_id)
+    if not employee or employee.session_token != session_token:
+        return False
+
+    return True
 @app.route('/')
 def index():
     return redirect(url_for('login'))
@@ -119,8 +135,18 @@ def nfc_redirect():
 
 @app.route('/employee_status/<int:employee_id>', methods=['GET', 'POST'])
 def employee_status(employee_id):
+    if not is_valid_session():
+        session.clear()
+        return redirect(url_for('login'))
+
+    logged_in_id = session['employee_id']
+    logged_in_employee = Employee.query.get(logged_in_id)
+
+    if logged_in_id != employee_id and not logged_in_employee.is_admin:
+        return "", 204  # Stay on the current page
+
     employee = Employee.query.get(employee_id)
-    if not employee or not employee.is_authenticated:
+    if not employee:
         return redirect(url_for('main_page'))
 
     success_message = None
@@ -147,8 +173,9 @@ def employee_status(employee_id):
 
 @app.route('/clock/<int:employee_id>', methods=['GET', 'POST'])
 def clock(employee_id):
-    if 'employee_id' not in session:
-        return "", 204  # Stay on the current page
+    if not is_valid_session():
+        session.clear()
+        return redirect(url_for('login'))
 
     logged_in_employee_id = session['employee_id']
     logged_in_employee = Employee.query.get(logged_in_employee_id)
@@ -157,7 +184,7 @@ def clock(employee_id):
         return "", 204  # Stay on the current page
 
     employee = Employee.query.get(employee_id)
-    if not employee or not employee.is_authenticated:
+    if not employee:
         return "", 204  # Stay on the current page
 
     success_message = None
@@ -187,16 +214,21 @@ def clock(employee_id):
 def login():
     error = None
     message = request.args.get('message')
+
     if request.method == 'POST':
         email = request.form['email']
         password = request.form['password']
         employee = Employee.query.filter_by(email=email).first()
 
         if employee and employee.check_password(password):
-            session['employee_id'] = employee.id
-            session['login_time'] = datetime.now().timestamp()
-            employee.is_authenticated = True
+            token = generate_session_token()
+            employee.session_token = token
             db.session.commit()
+
+            session['employee_id'] = employee.id
+            session['session_token'] = token
+            session['login_time'] = datetime.now().timestamp()
+
             next_page = request.args.get('next')
             if not next_page or urlsplit(next_page).netloc != '':
                 next_page = url_for('clock', employee_id=employee.id)
@@ -205,6 +237,7 @@ def login():
             error = "Invalid credentials. Please try again."
 
     return render_template('login.html', error=error, message=message)
+
 
 @app.route('/reset_request', methods=['GET', 'POST'])
 def reset_request():
@@ -276,18 +309,19 @@ If you did not expect this email, please ignore it.
 
 @app.route('/clock_history/<int:employee_id>')
 def view_clock_history(employee_id):
-    if 'employee_id' not in session:
-        return "", 204  # Stay on the current page
+    if not is_valid_session():
+        session.clear()
+        return redirect(url_for('login'))
 
     logged_in_employee_id = session['employee_id']
     logged_in_employee = Employee.query.get(logged_in_employee_id)
 
     if logged_in_employee_id != employee_id and not logged_in_employee.is_admin:
-        return "", 204  # Stay on the current page
+        return "Unauthorized", 403
 
     employee = Employee.query.get(employee_id)
     if not employee:
-        return "", 204  # Stay on the current page
+        return "Unauthorized", 403
 
     attendances = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.update_time.desc()).all()
     return render_template('clock_history.html', employee=employee, attendances=attendances, is_admin=logged_in_employee.is_admin, admin_id=logged_in_employee_id)
@@ -403,7 +437,7 @@ def logout():
     theme = request.cookies.get('theme', 'light')
     session.clear()
     response = make_response(redirect(url_for('login')))
-    response.set_cookie('theme', theme, max_age=60*60*24*30)  # Retain the theme cookie
+    response.set_cookie('theme', theme, max_age=60*60*24*30)
     return response
 
 # Global variable to store the scanned card UID
@@ -464,10 +498,18 @@ def check_card_uid():
 
 @app.route('/fetch_attendance/<int:employee_id>', methods=['GET'])
 def fetch_attendance(employee_id):
+    if not is_valid_session():
+        return jsonify({'error': 'Invalid session'}), 403
+
+    logged_in_id = session['employee_id']
+    logged_in_employee = Employee.query.get(logged_in_id)
+    if logged_in_id != employee_id and not logged_in_employee.is_admin:
+        return jsonify({'error': 'Unauthorized'}), 403
+
     month = int(request.args.get('month'))
     year = int(request.args.get('year'))
     start_date = datetime(year, month, 1)
-    end_date = datetime(year, month + 1, 1) if month < 12 else datetime(year + 1, 1, 1)
+    end_date = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
 
     attendance = Attendance.query.filter(
         Attendance.employee_id == employee_id,
@@ -481,6 +523,14 @@ def fetch_attendance(employee_id):
 
 @app.route('/fetch_attendance_day/<int:employee_id>', methods=['GET'])
 def fetch_attendance_day(employee_id):
+    if not is_valid_session():
+        return jsonify({'error': 'Invalid session'}), 403
+
+    logged_in_id = session['employee_id']
+    logged_in_employee = Employee.query.get(logged_in_id)
+    if logged_in_id != employee_id and not logged_in_employee.is_admin:
+        return jsonify({'error': 'Unauthorized'}), 403
+
     date = request.args.get('date')
     start_date = datetime.strptime(date, '%Y-%m-%d')
     end_date = start_date + timedelta(days=1)
@@ -491,10 +541,9 @@ def fetch_attendance_day(employee_id):
         Attendance.update_time < end_date
     ).all()
 
-    attendance_records = [{
-        'time': a.update_time.strftime('%H:%M:%S'),
-        'status': a.status.name
-    } for a in attendance]
+    attendance_records = [
+        {'time': a.update_time.strftime('%H:%M:%S'), 'status': a.status.name} for a in attendance
+    ]
 
     return jsonify({'attendance': attendance_records})
 
