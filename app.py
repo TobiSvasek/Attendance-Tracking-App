@@ -312,39 +312,64 @@ def view_clock_history(employee_id):
     attendances = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.update_time.desc()).all()
     return render_template('clock_history.html', employee=employee, attendances=attendances, is_admin=logged_in_employee.is_admin, admin_id=logged_in_employee_id)
 
+def generate_random_password(length=12):
+    """Generate a secure random password."""
+    alphabet = string.ascii_letters + string.digits + string.punctuation
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 FIRST_NAME = "NEW"
 SURNAME = "USER"
+import hashlib
+
 @app.route('/add_employee', methods=['GET', 'POST'])
 def add_employee():
+    global scanned_card_uid
+    error = None
+    success_message = None
+
+    # Check if the user is logged in
     if 'employee_id' not in session:
-        return "", 204  # Stay on the current page
+        return redirect(url_for('login'))
 
     logged_in_employee_id = session['employee_id']
     logged_in_employee = Employee.query.get(logged_in_employee_id)
 
+    # Check if the logged-in user is an admin
     if not logged_in_employee.is_admin:
         return "", 204  # Stay on the current page
 
-    error = None
-    success_message = None
-
     if request.method == 'POST':
-        email = request.form.get('email')
+        email = request.form['email']
         uid = request.form.get('uid')
-        is_admin = 'is_admin' in request.form
+        isAdmin = 'is_admin' in request.form
 
-        if not email or not uid:
-            error = "Email and UID are required."
-        elif Employee.query.filter_by(email=email).first():
-            error = "An employee with this email already exists."
-        elif Employee.query.filter_by(uid=uid).first():
-            error = "An employee with this UID already exists."
+        if not uid:
+            error = "No NFC card scanned. Please scan the card first."
         else:
-            new_employee = Employee(email=email, uid=uid, is_admin=is_admin)
-            db.session.add(new_employee)
-            db.session.commit()
-            success_message = "Employee added successfully!"
+            # Hash the UID before processing
+            hashed_uid = hashlib.sha256(uid.encode()).hexdigest()
+
+            if Employee.query.filter_by(email=email).first():
+                error = "An employee with this email already exists."
+            elif Employee.query.filter_by(uid=hashed_uid).first():
+                error = "An employee with this NFC UID already exists."
+            else:
+                new_employee = Employee(
+                    email=email,
+                    uid=hashed_uid,  # Store the hashed UID
+                    is_admin=isAdmin,
+                    name=FIRST_NAME,
+                    surname=SURNAME
+                )
+                random_password = generate_random_password()
+                new_employee.set_password(random_password)
+                db.session.add(new_employee)
+                db.session.commit()
+
+                send_set_details_email(new_employee)
+                scanned_card_uid = None  # Clear UID after assigning
+
+                success_message = f"Employee added successfully!"
 
     return render_template('add_employee.html', error=error, success_message=success_message)
 
