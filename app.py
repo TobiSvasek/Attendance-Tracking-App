@@ -559,7 +559,7 @@ def fetch_attendance_day(employee_id):
     return jsonify({'attendance': attendance_records})
 
 # Set the path to your ngrok configuration file
-conf.get_default().config_path = r"C:\Users\HP\AppData\Local\ngrok\ngrok.yml"
+conf.get_default().config_path = os.getenv('CONFIG_PATH')
 conf.get_default().auth_token = os.getenv('NGROK_AUTH_TOKEN')
 
 if __name__ == '__main__':
