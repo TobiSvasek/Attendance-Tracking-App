@@ -302,12 +302,12 @@ def view_clock_history(employee_id):
     logged_in_employee_id = session['employee_id']
     logged_in_employee = Employee.query.get(logged_in_employee_id)
 
-    if logged_in_employee_id != employee_id and not logged_in_employee.is_admin:
-        return "Unauthorized", 403
+    if not logged_in_employee.is_admin:
+        return "", 204  # Stay on the current page
 
     employee = Employee.query.get(employee_id)
     if not employee:
-        return "Unauthorized", 403
+        return "", 204  # Stay on the current page
 
     attendances = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.update_time.desc()).all()
     return render_template('clock_history.html', employee=employee, attendances=attendances, is_admin=logged_in_employee.is_admin, admin_id=logged_in_employee_id)

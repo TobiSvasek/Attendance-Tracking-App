@@ -28,7 +28,7 @@
     </div>
 </div>
 
-<form action="{{ url_for(is_admin and 'clock' or 'employee_status', employee_id=admin_id) }}" method="get">
+<form action="{{ url_for(is_admin and 'clock', employee_id=admin_id) }}" method="get">
     <button type="submit" style="background-color: indianred">Back</button>
 </form>
 
