@@ -119,8 +119,7 @@ def index():
 def main_page():
     if request.method == 'POST':
         employee_id = request.form.get('employee_id')
-        session['from_main'] = True  # Set the session flag
-        return redirect(url_for('employee_status', employee_id=employee_id))
+        return redirect(url_for('nfc_redirect', employee_id=employee_id))
     return render_template('main.html')
 
 @app.route('/nfc_redirect', methods=['POST'])
@@ -135,18 +134,8 @@ def nfc_redirect():
 
 @app.route('/employee_status/<int:employee_id>', methods=['GET', 'POST'])
 def employee_status(employee_id):
-    if not is_valid_session():
-        session.clear()
-        return redirect(url_for('login'))
-
-    logged_in_id = session['employee_id']
-    logged_in_employee = Employee.query.get(logged_in_id)
-
-    if logged_in_id != employee_id and not logged_in_employee.is_admin:
-        return "", 204  # Stay on the current page
-
     employee = Employee.query.get(employee_id)
-    if not employee:
+    if not employee or not employee.is_authenticated:
         return redirect(url_for('main_page'))
 
     success_message = None
