@@ -224,7 +224,6 @@ def login():
 
     return render_template('login.html', error=error, message=message)
 
-
 @app.route('/reset_request', methods=['GET', 'POST'])
 def reset_request():
     error = None
@@ -319,8 +318,6 @@ def generate_random_password(length=12):
 
 FIRST_NAME = "NEW"
 SURNAME = "USER"
-import hashlib
-
 @app.route('/add_employee', methods=['GET', 'POST'])
 def add_employee():
     global scanned_card_uid
