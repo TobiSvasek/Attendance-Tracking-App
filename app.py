@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 import hashlib
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from redis import Redis
 
 app = Flask(__name__, template_folder='templates')
 
@@ -131,9 +132,12 @@ def restrict_ip(allowed_ips):
         return wrapped
     return decorator
 
+redis_client = Redis(host='localhost', port=6379, db=0)
+
 limiter = Limiter(
     get_remote_address,
     app=app,
+    storage_uri="redis://localhost:6379/0",
     default_limits=["200 per day", "50 per hour"]
 )
 
