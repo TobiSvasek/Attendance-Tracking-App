@@ -8,25 +8,24 @@
     <i class="fas fa-rss" style="font-size: 180px; color: #5cb85c;"></i>
 </div>
 
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        function checkCard() {
-            fetch('/check_card')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.redirect_url) {
-                        // Redirect to the employee_status page
-                        window.location.href = data.redirect_url;
-                    } else {
-                        // Retry after 1 second
-                        setTimeout(checkCard, 1000);
-                    }
-                })
-                .catch(error => console.error('Error checking card:', error));
-        }
+    document.addEventListener('DOMContentLoaded', function () {
+        const socket = io();
 
-        // Start polling for NFC card detection
-        checkCard();
+        socket.on('connect', () => {
+            console.log("Connected to WebSocket");
+        });
+
+        socket.on('card_scanned', function (data) {
+            if (data.employee_id) {
+                window.location.href = `/employee_status/${data.employee_id}`;
+            }
+        });
+
+        socket.on('disconnect', () => {
+            console.log("Disconnected from WebSocket");
+        });
     });
 </script>
 {% endblock %}

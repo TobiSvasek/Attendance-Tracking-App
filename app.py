@@ -22,10 +22,13 @@ import threading
 from datetime import datetime, timedelta
 import hashlib
 from flask_limiter import Limiter
+from flask_limiter.errors import RateLimitExceeded
 from flask_limiter.util import get_remote_address
 from redis import Redis
+from flask_socketio import SocketIO, emit
 
 app = Flask(__name__, template_folder='templates')
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 load_dotenv()
 
@@ -45,8 +48,8 @@ migrate = Migrate(app, db)
 class Employee(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    name = db.Column(db.String(100), nullable=True)  # Changed to nullable=True
-    surname = db.Column(db.String(100), nullable=True)  # Changed to nullable=True
+    name = db.Column(db.String(100), nullable=True)
+    surname = db.Column(db.String(100), nullable=True)
     password_hash = db.Column(db.String(255), nullable=False)
     uid = db.Column(db.String(50), unique=True, nullable=True)
     status_id = db.Column(db.Integer, db.ForeignKey('status.id'), nullable=True)
@@ -55,7 +58,7 @@ class Employee(db.Model):
     session_token = db.Column(db.String(64), nullable=True)
 
     status = db.relationship('Status', backref='employees')
-    attendances = db.relationship('Attendance', backref='employee', lazy=True)
+    attendances = db.relationship('Attendance', backref='employee', lazy=True, cascade="all, delete-orphan")
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -138,15 +141,24 @@ limiter = Limiter(
     get_remote_address,
     app=app,
     storage_uri="redis://localhost:6379/0",
-    default_limits=os.getenv('RATE_LIMITS').split(';')
+    default_limits=[]
 )
 
 def custom_login_key():
-    return f"{get_remote_address()}:{request.form.get('email', '')}"
+    if request.method == 'POST':
+        return f"{get_remote_address()}:{request.form.get('email', '')}"
+    return get_remote_address()
+
+
+@socketio.on('connect')
+def handle_connect():
+    print("Reader initialized.")
+
 
 @app.route('/')
 def index():
     return redirect(url_for('login'))
+
 
 @app.route('/main', methods=['GET', 'POST'])
 @restrict_ip(os.getenv('ALLOWED_IPS', '').split(','))
@@ -156,6 +168,7 @@ def main_page():
         return redirect(url_for('nfc_redirect', employee_id=employee_id))
     return render_template('main.html')
 
+
 @app.route('/nfc_redirect', methods=['POST'])
 def nfc_redirect():
     employee_id = request.form.get('employee_id')
@@ -164,6 +177,7 @@ def nfc_redirect():
         return redirect(url_for('main_page'))
     else:
         return redirect(url_for('employee_status', employee_id=employee_id))
+
 
 @app.route('/employee_status/<int:employee_id>', methods=['GET', 'POST'])
 @restrict_ip(os.getenv('ALLOWED_IPS', '').split(','))
@@ -191,6 +205,7 @@ def employee_status(employee_id):
     employees = Employee.query.all() if employee.is_admin else None
 
     return render_template('employee_status.html', employee=employee, success_message=success_message, error_message=error_message, employees=employees, statuses=statuses)
+
 
 @app.route('/clock/<int:employee_id>', methods=['GET', 'POST'])
 def clock(employee_id):
@@ -233,12 +248,18 @@ def clock(employee_id):
 
 
 @app.route('/login', methods=['GET', 'POST'])
-@limiter.limit("5 per minute", key_func=custom_login_key)
 def login():
     error = None
     message = request.args.get('message')
 
     if request.method == 'POST':
+        try:
+            # Only apply rate limiting here:
+            limiter.limit("5 per minute", key_func=custom_login_key)(lambda: None)()
+        except RateLimitExceeded as e:
+            return render_template("429.html", retry_after=int(e.description.split(' ')[-1]) if "Retry-After" in e.description else 60), 429
+
+        # Continue with login logic
         email = request.form['email']
         password = request.form['password']
         employee = Employee.query.filter_by(email=email).first()
@@ -262,6 +283,7 @@ def login():
     return render_template('login.html', error=error, message=message)
 
 @app.route('/reset_request', methods=['GET', 'POST'])
+@limiter.limit("5 per minute", key_func=custom_login_key)
 def reset_request():
     error = None
     if request.method == 'POST':
@@ -275,6 +297,7 @@ def reset_request():
     return render_template('reset_request.html', error=error)
 
 @app.route('/reset_password/<token>', methods=['GET', 'POST'])
+@limiter.limit("5 per minute", key_func=custom_login_key)
 def reset_token(token):
     user = Employee.verify_reset_token(token)
     if not user:
@@ -329,6 +352,7 @@ If you did not expect this email, please ignore it.
 
     mail.send(msg)
 
+
 @app.route('/clock_history/<int:employee_id>')
 def view_clock_history(employee_id):
     if not is_valid_session():
@@ -357,55 +381,47 @@ FIRST_NAME = "NEW"
 SURNAME = "USER"
 @app.route('/add_employee', methods=['GET', 'POST'])
 def add_employee():
-    global scanned_card_uid
     error = None
     success_message = None
 
-    # Check if the user is logged in
     if 'employee_id' not in session:
         return redirect(url_for('login'))
 
-    logged_in_employee_id = session['employee_id']
-    logged_in_employee = Employee.query.get(logged_in_employee_id)
-
-    # Check if the logged-in user is an admin
+    logged_in_employee = Employee.query.get(session['employee_id'])
     if not logged_in_employee.is_admin:
         return go_back()
 
     if request.method == 'POST':
         email = request.form['email']
-        uid = request.form.get('uid')
-        isAdmin = 'is_admin' in request.form
+        uid_raw = request.form.get('uid')
+        is_admin = 'is_admin' in request.form
 
-        if not uid:
+        if not uid_raw:
             error = "No NFC card scanned. Please scan the card first."
         else:
-            # Hash the UID before processing
-            hashed_uid = hashlib.sha256(uid.encode()).hexdigest()
+            hashed_uid = hashlib.sha256(uid_raw.encode()).hexdigest()
 
             if Employee.query.filter_by(email=email).first():
                 error = "An employee with this email already exists."
             elif Employee.query.filter_by(uid=hashed_uid).first():
-                error = "An employee with this NFC UID already exists."
+                error = "This NFC card is already assigned to another employee."
             else:
                 new_employee = Employee(
                     email=email,
-                    uid=hashed_uid,  # Store the hashed UID
-                    is_admin=isAdmin,
-                    name=FIRST_NAME,
-                    surname=SURNAME
+                    uid=hashed_uid,
+                    is_admin=is_admin,
+                    name="NEW",
+                    surname="USER"
                 )
-                random_password = generate_random_password()
-                new_employee.set_password(random_password)
+                new_employee.set_password(generate_random_password())
                 db.session.add(new_employee)
                 db.session.commit()
 
                 send_set_details_email(new_employee)
-                scanned_card_uid = None  # Clear UID after assigning
-
-                success_message = f"Employee added successfully!"
+                success_message = "Employee added successfully!"
 
     return render_template('add_employee.html', error=error, success_message=success_message)
+
 
 @app.route('/set_details/<token>', methods=['GET', 'POST'])
 def set_details(token):
@@ -489,8 +505,7 @@ def logout():
 scanned_card_uid = None
 
 def nfc_card_scanner():
-    """Continuously scans for NFC cards and updates the scanned UID."""
-    global scanned_card_uid
+    """Continuously scans for NFC cards and emits event via WebSocket."""
     r = readers()
     if not r:
         print("No NFC reader detected.")
@@ -498,6 +513,7 @@ def nfc_card_scanner():
 
     reader = r[0]
     connection = reader.createConnection()
+    last_uid = None
 
     while True:
         try:
@@ -507,17 +523,32 @@ def nfc_card_scanner():
 
             if sw1 == 0x90 and sw2 == 0x00:
                 uid = toHexString(response)
-                if scanned_card_uid != uid:
-                    scanned_card_uid = uid
-                    print(f"Card detected: {uid}")
-            else:
-                scanned_card_uid = None
-        except NoCardException:
-            scanned_card_uid = None
-        except Exception as e:
-            print(f"Error: {e}")
 
-# Start the NFC scanner in a separate thread
+                if uid != last_uid:
+                    last_uid = uid
+                    print(f"Card detected: {uid}")
+
+                    hashed_uid = hashlib.sha256(uid.encode()).hexdigest()
+
+                    with app.app_context():
+                        employee = Employee.query.filter_by(uid=hashed_uid).first()
+
+                        if employee:
+                            print(f"Card belongs to employee_id={employee.id}")
+                            socketio.emit('card_scanned', {'employee_id': employee.id})
+                        else:
+                            print("Card not assigned, emitting raw UID")
+                            socketio.emit('card_scanned', {'uid': uid})
+
+            else:
+                last_uid = None
+
+        except NoCardException:
+            last_uid = None
+        except Exception as e:
+            print(f"[NFC ERROR] {e}")
+
+
 threading.Thread(target=nfc_card_scanner, daemon=True).start()
 
 @app.route('/check_card', methods=['GET'])
@@ -565,7 +596,6 @@ def fetch_attendance(employee_id):
     attendance_dates = [a.update_time.strftime('%Y-%m-%d') for a in attendance]
     return jsonify({'attendance': list(set(attendance_dates))})
 
-
 @app.route('/fetch_attendance_day/<int:employee_id>', methods=['GET'])
 def fetch_attendance_day(employee_id):
     if not is_valid_session():
@@ -608,4 +638,4 @@ if __name__ == '__main__':
     # Start ngrok tunnel
     public_url = ngrok.connect(5000)
     print(" * ngrok tunnel \"{}\" -> \"http://127.0.0.1:5000\"".format(public_url))
-    app.run(debug=True, use_reloader=False)
+    socketio.run(app, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)
