@@ -10,3 +10,4 @@ itsdangerous~=2.2.0
 dotenv~=0.9.9
 alembic~=1.15.2
 SQLAlchemy~=2.0.40
+Flask-Limiter~=3.12
