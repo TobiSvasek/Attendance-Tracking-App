@@ -138,7 +138,7 @@ limiter = Limiter(
     get_remote_address,
     app=app,
     storage_uri="redis://localhost:6379/0",
-    default_limits=["200 per day", "50 per hour"]
+    default_limits=os.getenv('RATE_LIMITS').split(';')
 )
 
 def custom_login_key():
@@ -149,10 +149,7 @@ def index():
     return redirect(url_for('login'))
 
 @app.route('/main', methods=['GET', 'POST'])
-@restrict_ip([
-    '2a00:11b7:1228:1f00:c5c7:2b06:a34b:12b8',
-    '31.30.160.221'
-])
+@restrict_ip(os.getenv('ALLOWED_IPS', '').split(','))
 def main_page():
     if request.method == 'POST':
         employee_id = request.form.get('employee_id')
@@ -169,10 +166,7 @@ def nfc_redirect():
         return redirect(url_for('employee_status', employee_id=employee_id))
 
 @app.route('/employee_status/<int:employee_id>', methods=['GET', 'POST'])
-@restrict_ip([
-    '2a00:11b7:1228:1f00:c5c7:2b06:a34b:12b8',
-    '31.30.160.221'
-])
+@restrict_ip(os.getenv('ALLOWED_IPS', '').split(','))
 def employee_status(employee_id):
     employee = Employee.query.get(employee_id)
     if not employee or not employee.is_authenticated:
