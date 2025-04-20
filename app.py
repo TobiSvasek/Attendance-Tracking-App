@@ -9,12 +9,21 @@ from itsdangerous import URLSafeTimedSerializer
 import re
 from dotenv import load_dotenv
 import os
-import base64
 from flask import current_app, url_for, render_template
 from flask_mail import Message
 import secrets
 import string
 from pyngrok import ngrok, conf
+from smartcard.System import readers
+from smartcard.Exceptions import NoCardException
+from smartcard.util import toHexString
+from flask import jsonify
+import threading
+from datetime import datetime, timedelta
+import hashlib
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
 app = Flask(__name__, template_folder='templates')
 
 load_dotenv()
@@ -35,12 +44,14 @@ migrate = Migrate(app, db)
 class Employee(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    name = db.Column(db.String(100), nullable=False)
-    surname = db.Column(db.String(100), nullable=False)
+    name = db.Column(db.String(100), nullable=True)  # Changed to nullable=True
+    surname = db.Column(db.String(100), nullable=True)  # Changed to nullable=True
     password_hash = db.Column(db.String(255), nullable=False)
+    uid = db.Column(db.String(50), unique=True, nullable=True)
     status_id = db.Column(db.Integer, db.ForeignKey('status.id'), nullable=True)
     is_admin = db.Column(db.Boolean, default=False)
     is_authenticated = db.Column(db.Boolean, default=False)
+    session_token = db.Column(db.String(64), nullable=True)
 
     status = db.relationship('Status', backref='employees')
     attendances = db.relationship('Attendance', backref='employee', lazy=True)
@@ -87,11 +98,57 @@ class Status(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)
 
+def go_back():
+    return "<script>window.history.back();</script>", 200
+
+def generate_session_token():
+    return secrets.token_hex(32)
+
+def is_valid_session():
+    employee_id = session.get('employee_id')
+    session_token = session.get('session_token')
+
+    if not employee_id or not session_token:
+        return False
+
+    employee = Employee.query.get(employee_id)
+    if not employee or employee.session_token != session_token:
+        return False
+
+    return True
+
+def restrict_ip(allowed_ips):
+    def decorator(f):
+        from functools import wraps
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            print("IP check running")
+            client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+            print("Client IP:", client_ip)
+            if client_ip not in allowed_ips:
+                return go_back()
+            return f(*args, **kwargs)
+        return wrapped
+    return decorator
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"]
+)
+
+def custom_login_key():
+    return f"{get_remote_address()}:{request.form.get('email', '')}"
+
 @app.route('/')
 def index():
     return redirect(url_for('login'))
 
 @app.route('/main', methods=['GET', 'POST'])
+@restrict_ip([
+    '2a00:11b7:1228:1f00:c5c7:2b06:a34b:12b8',
+    '31.30.160.221'
+])
 def main_page():
     if request.method == 'POST':
         employee_id = request.form.get('employee_id')
@@ -107,8 +164,11 @@ def nfc_redirect():
     else:
         return redirect(url_for('employee_status', employee_id=employee_id))
 
-
 @app.route('/employee_status/<int:employee_id>', methods=['GET', 'POST'])
+@restrict_ip([
+    '2a00:11b7:1228:1f00:c5c7:2b06:a34b:12b8',
+    '31.30.160.221'
+])
 def employee_status(employee_id):
     employee = Employee.query.get(employee_id)
     if not employee or not employee.is_authenticated:
@@ -136,9 +196,19 @@ def employee_status(employee_id):
 
 @app.route('/clock/<int:employee_id>', methods=['GET', 'POST'])
 def clock(employee_id):
-    employee = Employee.query.get(employee_id)
-    if not employee or not employee.is_authenticated:
+    if not is_valid_session():
+        session.clear()
         return redirect(url_for('login'))
+
+    logged_in_employee_id = session['employee_id']
+    logged_in_employee = Employee.query.get(logged_in_employee_id)
+
+    if logged_in_employee_id != employee_id:
+        return go_back()
+
+    employee = Employee.query.get(employee_id)
+    if not employee:
+        return go_back()
 
     success_message = None
     error_message = None
@@ -147,34 +217,43 @@ def clock(employee_id):
         status_id = request.form.get('status_id')
         if status_id:
             if employee.status_id == int(status_id):
-                success_message = "You are already in this status."
+                error_message = "You are already in this status."
             else:
-                employee.status_id = status_id
-                new_attendance = Attendance(employee_id=employee.id, status_id=status_id, update_time=datetime.now())
-                db.session.add(new_attendance)
-                db.session.commit()
-                success_message = "Status updated successfully!"
+                new_status = Status.query.get(status_id)
+                if new_status:
+                    employee.status_id = status_id
+                    new_attendance = Attendance(employee_id=employee.id, status_id=status_id, update_time=datetime.now())
+                    db.session.add(new_attendance)
+                    db.session.commit()
+                    success_message = "Status updated successfully!"
 
     statuses = Status.query.all()
-    employees = Employee.query.all() if employee.is_admin else None
+    employees = Employee.query.all() if logged_in_employee.is_admin else None
     attendances = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.update_time.desc()).all()
 
     return render_template('clock.html', employee=employee, success_message=success_message, error_message=error_message, employees=employees, statuses=statuses, attendances=attendances)
 
+
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute", key_func=custom_login_key)
 def login():
     error = None
     message = request.args.get('message')
+
     if request.method == 'POST':
         email = request.form['email']
         password = request.form['password']
         employee = Employee.query.filter_by(email=email).first()
 
         if employee and employee.check_password(password):
-            session['employee_id'] = employee.id
-            session['login_time'] = datetime.now().timestamp()
-            employee.is_authenticated = True
+            token = generate_session_token()
+            employee.session_token = token
             db.session.commit()
+
+            session['employee_id'] = employee.id
+            session['session_token'] = token
+            session['login_time'] = datetime.now().timestamp()
+
             next_page = request.args.get('next')
             if not next_page or urlsplit(next_page).netloc != '':
                 next_page = url_for('clock', employee_id=employee.id)
@@ -232,100 +311,165 @@ If you did not make this request, simply ignore this email and no changes will b
 
     mail.send(msg)
 
-def send_set_password_email(user):
+def send_set_details_email(user):
     token = user.generate_reset_token()
-    set_password_url = url_for('reset_token', token=token, _external=True)
+    set_details_url = url_for('set_details', token=token, _external=True)
 
-    # Read the logo image and encode it in base64
-    with current_app.open_resource('static/logo.png', 'rb') as image_file:
-        logo_base64 = base64.b64encode(image_file.read()).decode('utf-8')
+    html = render_template('email_templates/set_password_email.html', set_details=set_details_url)
 
-    html = render_template('email_templates/set_password_email.html', set_password_url=set_password_url, logo_base64=logo_base64)
-
-    msg = Message('Set Your Password',
+    msg = Message('Set Your Account Details',
                   recipients=[user.email])
-    msg.body = f'''A user account has been created for you. To set your password, visit the following link:
-{set_password_url}
+    msg.body = f'''A user account has been created for you. To set your name, surname, and password, visit the following link:
+{set_details_url}
 
 If you did not expect this email, please ignore it.
 '''
     msg.html = html
+
+    with current_app.open_resource('static/logo.png') as fp:
+        msg.attach('logo.png', 'image/png', fp.read(), 'inline', headers={'Content-ID': '<logo_cid>'})
+
     mail.send(msg)
 
 @app.route('/clock_history/<int:employee_id>')
 def view_clock_history(employee_id):
+    if not is_valid_session():
+        session.clear()
+        return redirect(url_for('login'))
+
+    logged_in_employee_id = session['employee_id']
+    logged_in_employee = Employee.query.get(logged_in_employee_id)
+
+    if not logged_in_employee.is_admin:
+        return go_back()
+
+    employee = Employee.query.get(employee_id)
+    if not employee:
+        return go_back()
+
+    attendances = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.update_time.desc()).all()
+    return render_template('clock_history.html', employee=employee, attendances=attendances, is_admin=logged_in_employee.is_admin, admin_id=logged_in_employee_id)
+
+def generate_random_password(length=12):
+    """Generate a secure random password."""
+    alphabet = string.ascii_letters + string.digits + string.punctuation
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+FIRST_NAME = "NEW"
+SURNAME = "USER"
+@app.route('/add_employee', methods=['GET', 'POST'])
+def add_employee():
+    global scanned_card_uid
+    error = None
+    success_message = None
+
+    # Check if the user is logged in
     if 'employee_id' not in session:
         return redirect(url_for('login'))
 
-    admin_id = session['employee_id']
-    employee = Employee.query.get(employee_id)
-    if not employee:
-        return redirect(url_for('clock', employee_id=admin_id))
+    logged_in_employee_id = session['employee_id']
+    logged_in_employee = Employee.query.get(logged_in_employee_id)
 
-    attendances = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.update_time.desc()).all()
-    is_admin = Employee.query.get(admin_id).is_admin
-    return render_template('clock_history.html', employee=employee, attendances=attendances, is_admin=is_admin, admin_id=admin_id)
+    # Check if the logged-in user is an admin
+    if not logged_in_employee.is_admin:
+        return go_back()
 
-def generate_random_password(length=12):
-    characters = string.ascii_letters + string.digits + string.punctuation
-    return ''.join(secrets.choice(characters) for i in range(length))
-
-@app.route('/add_employee', methods=['GET', 'POST'])
-def add_employee():
-    error = None
     if request.method == 'POST':
         email = request.form['email']
+        uid = request.form.get('uid')
+        isAdmin = 'is_admin' in request.form
+
+        if not uid:
+            error = "No NFC card scanned. Please scan the card first."
+        else:
+            # Hash the UID before processing
+            hashed_uid = hashlib.sha256(uid.encode()).hexdigest()
+
+            if Employee.query.filter_by(email=email).first():
+                error = "An employee with this email already exists."
+            elif Employee.query.filter_by(uid=hashed_uid).first():
+                error = "An employee with this NFC UID already exists."
+            else:
+                new_employee = Employee(
+                    email=email,
+                    uid=hashed_uid,  # Store the hashed UID
+                    is_admin=isAdmin,
+                    name=FIRST_NAME,
+                    surname=SURNAME
+                )
+                random_password = generate_random_password()
+                new_employee.set_password(random_password)
+                db.session.add(new_employee)
+                db.session.commit()
+
+                send_set_details_email(new_employee)
+                scanned_card_uid = None  # Clear UID after assigning
+
+                success_message = f"Employee added successfully!"
+
+    return render_template('add_employee.html', error=error, success_message=success_message)
+
+@app.route('/set_details/<token>', methods=['GET', 'POST'])
+def set_details(token):
+    user = Employee.verify_reset_token(token)
+    if not user:
+        return render_template('link_expired.html')
+
+    if request.method == 'POST':
         name = request.form['name']
         surname = request.form['surname']
-        isAdmin = 'is_admin' in request.form  # Convert to boolean
+        password = request.form['password']
+        confirm_password = request.form['confirm_password']
 
-        # Check if the user already exists
-        existing_employee = Employee.query.filter_by(email=email).first()
-        if existing_employee:
-            error = f"User with email {email} already exists."
-            return render_template('add_employee.html', error=error)
+        if password != confirm_password:
+            error = "Passwords do not match. Please try again."
+            return render_template('set_details.html', error=error)
 
-        default_password = generate_random_password()  # Generate a random password
+        if not is_strong_password(password):
+            error = "Password is not strong enough. It must be at least 8 characters long, contain an uppercase letter, a lowercase letter, and a number."
+            return render_template('set_details.html', error=error)
 
-        new_employee = Employee(email=email, name=name, surname=surname, is_admin=isAdmin)
-        new_employee.set_password(default_password)  # Set the random password
-        db.session.add(new_employee)
+        user.name = name
+        user.surname = surname
+        user.set_password(password)
+        user.is_authenticated = True  # Set is_authenticated to True
         db.session.commit()
+        return redirect(url_for('login', message='Details successfully set.'))
 
-        send_set_password_email(new_employee)
-
-        success_message = f'User {name} {surname} created and email sent to {email}.'
-        return redirect(url_for('clock', employee_id=session['employee_id']))
-
-    return render_template('add_employee.html', error=error)
+    return render_template('set_details.html')
 
 @app.route('/delete_employee', methods=['GET', 'POST'])
 def delete_employee():
     if 'employee_id' not in session:
-        return redirect(url_for('login'))
+        return go_back()
 
-    employee = Employee.query.get(session['employee_id'])
-    if not employee.is_admin:
-        return redirect(url_for('clock', employee_id=employee.id))
+    logged_in_employee_id = session['employee_id']
+    logged_in_employee = Employee.query.get(logged_in_employee_id)
+
+    if not logged_in_employee.is_admin:
+        return go_back()
 
     error = None
     if request.method == 'POST':
         employee_ids = request.form.get('employee_ids')
         if employee_ids:
-            employee_ids = employee_ids.split(',')
-            for emp_id in employee_ids:
-                employee_to_delete = Employee.query.get(emp_id)
-                if employee_to_delete:
-                    # Delete associated attendance records
-                    Attendance.query.filter_by(employee_id=emp_id).delete()
-                    db.session.delete(employee_to_delete)
-            db.session.commit()
-            return redirect(url_for('clock', employee_id=employee.id))
+            ids_to_delete = [int(emp_id) for emp_id in employee_ids.split(',') if emp_id.isdigit()]
+            employees_to_delete = Employee.query.filter(Employee.id.in_(ids_to_delete)).all()
+
+            non_admin_employees = [emp for emp in employees_to_delete if not emp.is_admin]
+
+            if not non_admin_employees:
+                error = "No valid employees selected for deletion."
+            else:
+                for emp in non_admin_employees:
+                    db.session.delete(emp)
+                db.session.commit()
         else:
             error = "No employees selected for deletion."
 
+    # Fetch only non-admin employees
     employees = Employee.query.filter_by(is_admin=False).all()
-    return render_template('delete_employee.html', employees=employees, error=error, employee_id=employee.id)
+    return render_template('delete_employee.html', employees=employees, error=error)
 
 @app.route('/toggle_theme', methods=['POST'])
 def toggle_theme():
@@ -340,11 +484,124 @@ def logout():
     theme = request.cookies.get('theme', 'light')
     session.clear()
     response = make_response(redirect(url_for('login')))
-    response.set_cookie('theme', theme, max_age=60*60*24*30)  # Retain the theme cookie
+    response.set_cookie('theme', theme, max_age=60*60*24*30)
     return response
 
+# Global variable to store the scanned card UID
+scanned_card_uid = None
+
+def nfc_card_scanner():
+    """Continuously scans for NFC cards and updates the scanned UID."""
+    global scanned_card_uid
+    r = readers()
+    if not r:
+        print("No NFC reader detected.")
+        return
+
+    reader = r[0]
+    connection = reader.createConnection()
+
+    while True:
+        try:
+            connection.connect()
+            GET_UID = [0xFF, 0xCA, 0x00, 0x00, 0x00]
+            response, sw1, sw2 = connection.transmit(GET_UID)
+
+            if sw1 == 0x90 and sw2 == 0x00:
+                uid = toHexString(response)
+                if scanned_card_uid != uid:
+                    scanned_card_uid = uid
+                    print(f"Card detected: {uid}")
+            else:
+                scanned_card_uid = None
+        except NoCardException:
+            scanned_card_uid = None
+        except Exception as e:
+            print(f"Error: {e}")
+
+# Start the NFC scanner in a separate thread
+threading.Thread(target=nfc_card_scanner, daemon=True).start()
+
+@app.route('/check_card', methods=['GET'])
+def check_card():
+    """Checks if an NFC card has been scanned and returns the redirect URL."""
+    global scanned_card_uid
+    if scanned_card_uid:
+        uid = hashlib.sha256(scanned_card_uid.encode()).hexdigest()  # Hash the UID
+        scanned_card_uid = None  # Reset the UID after processing
+        employee = Employee.query.filter_by(uid=uid).first()
+        if employee:
+            return jsonify({'redirect_url': url_for('employee_status', employee_id=employee.id)})
+    return jsonify({'redirect_url': None})
+
+@app.route('/check_card_uid', methods=['GET'])
+def check_card_uid():
+    global scanned_card_uid
+    if scanned_card_uid:
+        uid = scanned_card_uid
+        scanned_card_uid = None  # Reset after reading
+        return jsonify({'uid': uid})
+    return jsonify({'uid': None})
+
+@app.route('/fetch_attendance/<int:employee_id>', methods=['GET'])
+def fetch_attendance(employee_id):
+    if not is_valid_session():
+        return jsonify({'error': 'Invalid session'}), 403
+
+    logged_in_id = session['employee_id']
+    logged_in_employee = Employee.query.get(logged_in_id)
+    if logged_in_id != employee_id and not logged_in_employee.is_admin:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    month = int(request.args.get('month'))
+    year = int(request.args.get('year'))
+    start_date = datetime(year, month, 1)
+    end_date = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
+
+    attendance = Attendance.query.filter(
+        Attendance.employee_id == employee_id,
+        Attendance.update_time >= start_date,
+        Attendance.update_time < end_date
+    ).all()
+
+    attendance_dates = [a.update_time.strftime('%Y-%m-%d') for a in attendance]
+    return jsonify({'attendance': list(set(attendance_dates))})
+
+
+@app.route('/fetch_attendance_day/<int:employee_id>', methods=['GET'])
+def fetch_attendance_day(employee_id):
+    if not is_valid_session():
+        return jsonify({'error': 'Invalid session'}), 403
+
+    logged_in_id = session['employee_id']
+    logged_in_employee = Employee.query.get(logged_in_id)
+    if logged_in_id != employee_id and not logged_in_employee.is_admin:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    date = request.args.get('date')
+    start_date = datetime.strptime(date, '%Y-%m-%d')
+    end_date = start_date + timedelta(days=1)
+
+    attendance = Attendance.query.filter(
+        Attendance.employee_id == employee_id,
+        Attendance.update_time >= start_date,
+        Attendance.update_time < end_date
+    ).all()
+
+    attendance_records = [
+        {'time': a.update_time.strftime('%H:%M:%S'), 'status': a.status.name} for a in attendance
+    ]
+
+    return jsonify({'attendance': attendance_records})
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    retry_after = int(e.description.split(' ')[-1]) if "Retry-After" in e.description else 60
+    return render_template("429.html", retry_after=retry_after), 429
+
+
 # Set the path to your ngrok configuration file
-conf.get_default().config_path = r"C:\Users\HP\AppData\Local\ngrok\ngrok.yml"
+conf.get_default().config_path = os.getenv('CONFIG_PATH')
 conf.get_default().auth_token = os.getenv('NGROK_AUTH_TOKEN')
 
 if __name__ == '__main__':

@@ -485,3 +485,208 @@ body.dark #theme-toggle-button {
         background-position: 100% 0%;
     }
 }
+
+.calendar {
+    max-width: 600px;
+    margin: 20px auto;
+    text-align: center;box-shadow: #333333 0px 0px 2px 2px; /* Uniform shadow on all sides */
+    background-color: rgba(74, 82, 89, 0.8); /* Opaque background */
+    border-radius: 15px; /* Slightly rounded corners */
+}
+
+.calendar-header {
+    display: flex;
+    justify-content: center; /* Center the content */
+    align-items: center;
+    gap: 10px; /* Add a small gap between the buttons and the month */
+}
+
+.calendar-header button {
+    background-color: #5cb85c;
+    width: 40px; /* Adjust width for a more compact look */
+    color: white;
+    border: none;
+    padding: 5px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.calendar-header button:hover {
+    background-color: #4cae4c;
+}
+
+#month-year {
+    font-size: 18px; /* Adjust font size for better alignment */
+    font-weight: bold;
+}
+
+.calendar-header button:hover {
+    background-color: #4cae4c;
+}
+
+.calendar-weekdays, .calendar-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+}
+
+.calendar-weekdays{
+    border: #6c757d;
+    background-color: #6c757d;
+}
+
+.calendar-weekdays span, .calendar-days span {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+    border-radius: 50%;
+}
+
+.calendar-days .day {
+    display: inline-block;
+    width: 25px; /* Adjust width as needed */
+    height: 25px; /* Adjust height as needed */
+    line-height: 40px; /* Center the text vertically */
+    border-radius: 50%; /* Keep the circle shape */
+    text-align: center;
+    cursor: pointer;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    margin-left: 18px;
+}
+
+.calendar-days .day.present {
+    background-color: #4caf4c;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 30px; /* Adjust size as needed */
+    height: 30px; /* Adjust size as needed */
+    margin-left: 15px;
+    margin-top: 15px;
+}
+
+.calendar-days .day.current-day {
+    background-color: #8f938f;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 30px; /* Adjust size as needed */
+    height: 30px; /* Adjust size as needed */
+    margin-left: 15px;
+    margin-top: 15px;
+}
+
+.calendar-days .day.present:hover {
+    background-color: #4cae4c; /* Slightly lighter green on hover */
+}
+
+.calendar-days .empty {
+    visibility: hidden;
+}
+
+@media (max-width: 600px) {
+    .calendar {
+        padding: 10px; /* Add padding for smaller screens */
+    }
+
+    .calendar-weekdays, .calendar-days {
+        grid-template-columns: repeat(7, minmax(30px, 1fr)); /* Adjust column size for smaller screens */
+    }
+
+    .calendar-days .day {
+        font-size: 12px; /* Reduce font size for smaller screens */
+    }
+
+    .calendar-days .day.present {
+        width: 30px; /* Smaller size for phones */
+        height: 30px; /* Smaller size for phones */
+        font-size: 12px; /* Adjust font size */
+        margin-right: 5px;
+    }
+}
+
+body.light .calendar {
+    box-shadow: #ccc 0px 0px 2px 2px; /* Lighter shadow */
+    background-color: rgba(255, 255, 255, 0.9); /* Light opaque background */
+}
+
+body.light .calendar-header button {
+    background-color: #5cb85c; /* Light mode button color */
+    color: white;
+}
+
+body.light .calendar-header button:hover {
+    background-color: #4cae4c; /* Slightly darker blue on hover */
+}
+
+body.light .calendar-days span {
+    background-color: transparent; /* Remove background */
+    color: #333; /* Keep text color for visibility */
+    border: none; /* Remove any borders */
+}
+
+body.light .calendar-weekdays {
+    background-color: #e0e0e3; /* Keep the gray background for weekdays */
+    color: #323232; /* Keep the text color white */
+}
+
+body.light .calendar-days .day.present {
+    background-color: #4caf4c; /* Keep the green background for present days */
+    color: white;
+    border: none; /* Ensure no border is applied */
+}
+
+body.light .calendar-days .day.current-day {
+    background-color: #8f938f;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 30px; /* Adjust size as needed */
+    height: 30px; /* Adjust size as needed */
+    margin-left: 15px;
+    margin-top: 15px;
+}
+
+body.light .calendar-days .day.present:hover {
+    background-color: #4cae4c; /* Slightly lighter green on hover */
+}
+
+.header-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px;
+}
+
+.logo {
+    height: 40px; /* Adjust the size of the logo */
+}
+
+
+
+header {
+    position: relative;
+}
+
+.theme-toggle-form {
+    margin-left: auto;
+    position: absolute;
+    top: 10px;
+    right: 50px;
+    background: none;
+    box-shadow: none;
+    padding: 0;
+    border-radius: 25px;
+}
+
+body.dark .theme-toggle-form {
+    background: none; /* Override the background for the toggle form */
+}

@@ -16,13 +16,4 @@
 <form action="{{ url_for('reset_request') }}" method="get">
     <button style="background-color: cadetblue" type="submit">Reset Password</button>
 </form>
-<form action="{{ url_for('toggle_theme') }}" method="post">
-    <button type="submit" id="theme-toggle-button">
-        {% if request.cookies.get('theme', 'light') == 'light' %}
-            🌙
-        {% else %}
-            ☀️
-        {% endif %}
-    </button>
-</form>
 {% endblock %}

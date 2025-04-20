@@ -4,21 +4,118 @@
 
 {% block content %}
 <h1>Attendance History for {{ employee.name }} {{ employee.surname }}</h1>
-<div class="clock-history-panel">
-    <div class="table-header">
-        <span>Date and Time</span>
-        <span>Status</span>
+
+<div class="calendar">
+    <div class="calendar-header">
+        <button id="prev-month">&lt;</button>
+        <span id="month-year"></span>
+        <button id="next-month">&gt;</button>
     </div>
-    <ul class="scrollable-list">
-        {% for attendance in attendances %}
-            <li>
-                <span>{{ attendance.update_time.strftime('%d. %m. %Y %H:%M:%S') }}</span>
-                <span class="status-{{ attendance.status.name | lower | replace(' ', '') }}">{{ attendance.status.name }}</span>
-            </li>
-        {% endfor %}
-    </ul>
+    <div class="calendar-weekdays">
+        <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+    </div>
+    <div class="calendar-days" id="calendar-days"></div>
 </div>
-<form action="{{ url_for(is_admin and 'clock' or 'employee_status', employee_id=admin_id) }}" method="get">
+
+<div id="attendance-panel" style="display: none;">
+    <h2>Attendance for <span id="selected-date"></span></h2>
+    <div class="clock-history-panel">
+        <div class="table-header">
+            <span>Date and Time</span>
+            <span>Status</span>
+        </div>
+        <ul class="scrollable-list" id="attendance-list"></ul>
+    </div>
+</div>
+
+<form action="{{ url_for(is_admin and 'clock', employee_id=admin_id) }}" method="get">
     <button type="submit" style="background-color: indianred">Back</button>
 </form>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const calendarDays = document.getElementById('calendar-days');
+        const monthYear = document.getElementById('month-year');
+        const prevMonth = document.getElementById('prev-month');
+        const nextMonth = document.getElementById('next-month');
+        const attendancePanel = document.getElementById('attendance-panel');
+        const attendanceList = document.getElementById('attendance-list');
+        const selectedDate = document.getElementById('selected-date');
+
+        let currentDate = new Date();
+        const employeeId = {{ employee.id }};
+
+        function fetchAttendance(month, year) {
+            fetch(`/fetch_attendance/${employeeId}?month=${month}&year=${year}`)
+                .then(response => response.json())
+                .then(data => renderCalendar(data.attendance))
+                .catch(error => console.error('Error fetching attendance:', error));
+        }
+
+        function renderCalendar(attendance) {
+    const month = currentDate.getMonth();
+    const year = currentDate.getFullYear();
+    const today = new Date();
+
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    calendarDays.innerHTML = '';
+    monthYear.textContent = currentDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+    for (let i = 0; i < firstDay; i++) {
+        calendarDays.innerHTML += '<span class="empty"></span>';
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+        const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const isPresent = attendance.includes(date);
+        const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
+
+        calendarDays.innerHTML += `
+          <span class="day ${isPresent ? 'present' : ''} ${isToday ? 'current-day' : ''}" data-date="${date}">
+            ${day}
+          </span>`;
+    }
+
+    document.querySelectorAll('.day.present').forEach(day => {
+        day.addEventListener('click', function () {
+            const date = this.getAttribute('data-date');
+            selectedDate.textContent = date;
+            fetchAttendanceForDay(date);
+        });
+    });
+}
+
+        function fetchAttendanceForDay(date) {
+            fetch(`/fetch_attendance_day/${employeeId}?date=${date}`)
+                .then(response => response.json())
+                .then(data => {
+                    attendanceList.innerHTML = '';
+                    data.attendance.forEach(record => {
+                        attendanceList.innerHTML += `
+                            <li>
+                                <span>${record.time}</span>
+                                <span class="status-${record.status.toLowerCase().replace(' ', '')}">${record.status}</span>
+                            </li>`;
+                    });
+                    attendancePanel.style.display = 'block';
+                })
+                .catch(error => console.error('Error fetching attendance for day:', error));
+        }
+
+        prevMonth.addEventListener('click', function () {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            fetchAttendance(currentDate.getMonth() + 1, currentDate.getFullYear());
+        });
+
+        nextMonth.addEventListener('click', function () {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            fetchAttendance(currentDate.getMonth() + 1, currentDate.getFullYear());
+        });
+
+        // Initial fetch
+        fetchAttendance(currentDate.getMonth() + 1, currentDate.getFullYear());
+    });
+</script>
 {% endblock %}
