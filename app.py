@@ -428,7 +428,6 @@ def add_employee():
 
     return render_template('add_employee.html', error=error, success_message=success_message)
 
-
 @app.route('/set_details/<token>', methods=['GET', 'POST'])
 def set_details(token):
     user = Employee.verify_reset_token(token)
