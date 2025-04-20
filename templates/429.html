@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Too Many Requests</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        body.dark {
+            background-color: #515151; /* Dark mode background */
+            color: #fff; /* Dark mode text color */
+        }
+
+        .error-box {
+            background-color: #fff;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .error-box h1 {
+            font-size: 24px;
+            color: #d9534f;
+            margin-bottom: 10px;
+        }
+
+        .error-box p {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .error-box button {
+            background-color: gray;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: not-allowed;
+            font-size: 16px;
+        }
+
+        .error-box button.active {
+            background-color: indianred;
+            cursor: pointer;
+        }
+
+        .error-box button.active:hover {
+            background-color: #c0392b;
+        }
+    </style>
+</head>
+<body class="{{ request.cookies.get('theme', 'light') }}">
+    <div class="error-box">
+        <h1>⏱️ Rate Limit Reached</h1>
+        <p>You've sent too many requests in a short time.</p>
+        <p>Try again in <span class="timer" id="countdown">{{ retry_after }}</span> seconds.</p>
+        <form action="{{ url_for('login') }}" method="get">
+            <button id="back-button" type="submit" disabled>Back</button>
+        </form>
+    </div>
+    <script>
+        let timeLeft = {{ retry_after }};
+        const timerElement = document.getElementById('countdown');
+        const backButton = document.getElementById('back-button');
+
+        const countdown = setInterval(() => {
+            timeLeft--;
+            if (timeLeft <= 0) {
+                clearInterval(countdown);
+                timerElement.textContent = '0';
+                backButton.disabled = false;
+                backButton.classList.add('active');
+            } else {
+                timerElement.textContent = timeLeft;
+            }
+        }, 1000);
+    </script>
+</body>
+</html>

@@ -642,6 +642,19 @@ body.light .calendar-days .day.present {
     border: none; /* Ensure no border is applied */
 }
 
+body.light .calendar-days .day.current-day {
+    background-color: #8f938f;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 30px; /* Adjust size as needed */
+    height: 30px; /* Adjust size as needed */
+    margin-left: 15px;
+    margin-top: 15px;
+}
+
 body.light .calendar-days .day.present:hover {
     background-color: #4cae4c; /* Slightly lighter green on hover */
 }

@@ -21,6 +21,8 @@ from flask import jsonify
 import threading
 from datetime import datetime, timedelta
 import hashlib
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 app = Flask(__name__, template_folder='templates')
 
@@ -96,6 +98,9 @@ class Status(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)
 
+def go_back():
+    return "<script>window.history.back();</script>", 200
+
 def generate_session_token():
     return secrets.token_hex(32)
 
@@ -111,11 +116,39 @@ def is_valid_session():
         return False
 
     return True
+
+def restrict_ip(allowed_ips):
+    def decorator(f):
+        from functools import wraps
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            print("IP check running")
+            client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+            print("Client IP:", client_ip)
+            if client_ip not in allowed_ips:
+                return go_back()
+            return f(*args, **kwargs)
+        return wrapped
+    return decorator
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"]
+)
+
+def custom_login_key():
+    return f"{get_remote_address()}:{request.form.get('email', '')}"
+
 @app.route('/')
 def index():
     return redirect(url_for('login'))
 
 @app.route('/main', methods=['GET', 'POST'])
+@restrict_ip([
+    '2a00:11b7:1228:1f00:c5c7:2b06:a34b:12b8',
+    '31.30.160.221'
+])
 def main_page():
     if request.method == 'POST':
         employee_id = request.form.get('employee_id')
@@ -132,6 +165,10 @@ def nfc_redirect():
         return redirect(url_for('employee_status', employee_id=employee_id))
 
 @app.route('/employee_status/<int:employee_id>', methods=['GET', 'POST'])
+@restrict_ip([
+    '2a00:11b7:1228:1f00:c5c7:2b06:a34b:12b8',
+    '31.30.160.221'
+])
 def employee_status(employee_id):
     employee = Employee.query.get(employee_id)
     if not employee or not employee.is_authenticated:
@@ -167,11 +204,11 @@ def clock(employee_id):
     logged_in_employee = Employee.query.get(logged_in_employee_id)
 
     if logged_in_employee_id != employee_id:
-        return "", 204  # Stay on the current page
+        return go_back()
 
     employee = Employee.query.get(employee_id)
     if not employee:
-        return "", 204  # Stay on the current page
+        return go_back()
 
     success_message = None
     error_message = None
@@ -196,7 +233,9 @@ def clock(employee_id):
 
     return render_template('clock.html', employee=employee, success_message=success_message, error_message=error_message, employees=employees, statuses=statuses, attendances=attendances)
 
+
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute", key_func=custom_login_key)
 def login():
     error = None
     message = request.args.get('message')
@@ -302,11 +341,11 @@ def view_clock_history(employee_id):
     logged_in_employee = Employee.query.get(logged_in_employee_id)
 
     if not logged_in_employee.is_admin:
-        return "", 204  # Stay on the current page
+        return go_back()
 
     employee = Employee.query.get(employee_id)
     if not employee:
-        return "", 204  # Stay on the current page
+        return go_back()
 
     attendances = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.update_time.desc()).all()
     return render_template('clock_history.html', employee=employee, attendances=attendances, is_admin=logged_in_employee.is_admin, admin_id=logged_in_employee_id)
@@ -333,7 +372,7 @@ def add_employee():
 
     # Check if the logged-in user is an admin
     if not logged_in_employee.is_admin:
-        return "", 204  # Stay on the current page
+        return go_back()
 
     if request.method == 'POST':
         email = request.form['email']
@@ -402,13 +441,13 @@ def set_details(token):
 @app.route('/delete_employee', methods=['GET', 'POST'])
 def delete_employee():
     if 'employee_id' not in session:
-        return "", 204  # Stay on the current page
+        return go_back()
 
     logged_in_employee_id = session['employee_id']
     logged_in_employee = Employee.query.get(logged_in_employee_id)
 
     if not logged_in_employee.is_admin:
-        return "", 204  # Stay on the current page
+        return go_back()
 
     error = None
     if request.method == 'POST':
@@ -554,6 +593,12 @@ def fetch_attendance_day(employee_id):
     ]
 
     return jsonify({'attendance': attendance_records})
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    retry_after = int(e.description.split(' ')[-1]) if "Retry-After" in e.description else 60
+    return render_template("429.html", retry_after=retry_after), 429
+
 
 # Set the path to your ngrok configuration file
 conf.get_default().config_path = os.getenv('CONFIG_PATH')
