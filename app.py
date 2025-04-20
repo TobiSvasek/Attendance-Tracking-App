@@ -302,8 +302,14 @@ def reset_token(token):
     user = Employee.verify_reset_token(token)
     if not user:
         return render_template('link_expired.html')
+
     if request.method == 'POST':
         password = request.form['password']
+        confirm_password = request.form['confirm_password']
+        if password != confirm_password:
+            error = "Passwords do not match. Please try again."
+
+            return render_template('reset_token.html', error=error)
         if not is_strong_password(password):
             error = "Password is not strong enough. It must be at least 8 characters long, contain an uppercase letter, a lowercase letter, a number."
             return render_template('reset_token.html', error=error)
