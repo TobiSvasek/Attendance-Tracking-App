@@ -56,6 +56,7 @@ class Employee(db.Model):
     is_admin = db.Column(db.Boolean, default=False)
     is_authenticated = db.Column(db.Boolean, default=False)
     session_token = db.Column(db.String(64), nullable=True)
+    profile_picture = db.Column(db.String(255), nullable=True, default='profile_pictures/default.png')
 
     status = db.relationship('Status', backref='employees')
     attendances = db.relationship('Attendance', backref='employee', lazy=True, cascade="all, delete-orphan")
@@ -149,11 +150,16 @@ def custom_login_key():
         return f"{get_remote_address()}:{request.form.get('email', '')}"
     return get_remote_address()
 
+@app.context_processor
+def inject_logged_in_employee():
+    if 'employee_id' in session:
+        employee = Employee.query.get(session['employee_id'])
+        return dict(logged_in_employee=employee)
+    return dict(logged_in_employee=None)
 
 @socketio.on('connect')
 def handle_connect():
     print("Reader initialized.")
-
 
 @app.route('/')
 def index():
@@ -244,7 +250,7 @@ def clock(employee_id):
     employees = Employee.query.all() if logged_in_employee.is_admin else None
     attendances = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.update_time.desc()).all()
 
-    return render_template('clock.html', employee=employee, success_message=success_message, error_message=error_message, employees=employees, statuses=statuses, attendances=attendances)
+    return render_template('clock.html', employee=employee, success_message=success_message, error_message=error_message, employees=employees, statuses=statuses, attendances=attendances,logged_in_employee=logged_in_employee ,show_profile_picture=True)
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -376,7 +382,7 @@ def view_clock_history(employee_id):
         return go_back()
 
     attendances = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.update_time.desc()).all()
-    return render_template('clock_history.html', employee=employee, attendances=attendances, is_admin=logged_in_employee.is_admin, admin_id=logged_in_employee_id)
+    return render_template('clock_history.html', employee=employee, attendances=attendances, is_admin=logged_in_employee.is_admin, admin_id=logged_in_employee_id, logged_in_employee=logged_in_employee,show_profile_picture=True)
 
 def generate_random_password(length=12):
     """Generate a secure random password."""
@@ -417,7 +423,8 @@ def add_employee():
                     uid=hashed_uid,
                     is_admin=is_admin,
                     name="NEW",
-                    surname="USER"
+                    surname="USER",
+                    profile_picture='profile_pictures/default.png'
                 )
                 new_employee.set_password(generate_random_password())
                 db.session.add(new_employee)
@@ -426,7 +433,7 @@ def add_employee():
                 send_set_details_email(new_employee)
                 success_message = "Employee added successfully!"
 
-    return render_template('add_employee.html', error=error, success_message=success_message)
+    return render_template('add_employee.html', error=error, success_message=success_message,logged_in_employee=logged_in_employee ,show_profile_picture=True)
 
 @app.route('/set_details/<token>', methods=['GET', 'POST'])
 def set_details(token):
@@ -442,11 +449,11 @@ def set_details(token):
 
         if password != confirm_password:
             error = "Passwords do not match. Please try again."
-            return render_template('set_details.html', error=error)
+            return render_template('set_details.html', error=error, employee=user)
 
         if not is_strong_password(password):
             error = "Password is not strong enough. It must be at least 8 characters long, contain an uppercase letter, a lowercase letter, and a number."
-            return render_template('set_details.html', error=error)
+            return render_template('set_details.html', error=error, employee=user)
 
         user.name = name
         user.surname = surname
@@ -455,7 +462,40 @@ def set_details(token):
         db.session.commit()
         return redirect(url_for('login', message='Details successfully set.'))
 
-    return render_template('set_details.html')
+    return render_template('set_details.html', employee=user)
+
+
+@app.route('/upload_profile_picture/<int:employee_id>', methods=['POST'])
+def upload_profile_picture(employee_id):
+    if 'profile_picture' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+
+    file = request.files['profile_picture']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    if file and allowed_file(file.filename):
+        # Generate a unique filename
+        filename = f"{employee_id}_{secrets.token_hex(8)}.{file.filename.rsplit('.', 1)[1].lower()}"
+        relative_path = os.path.join('profile_pictures', filename).replace("\\", "/")
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+        try:
+            # Save the file to the static directory
+            file.save(filepath)
+
+            # Update the employee's profile_picture field with the relative path
+            employee = Employee.query.get(employee_id)
+            if employee:
+                employee.profile_picture = relative_path  # Store relative path
+                db.session.commit()
+                return '', 204
+            else:
+                return jsonify({'error': 'Employee not found'}), 404
+        except Exception as e:
+            return jsonify({'error': f'File upload failed: {str(e)}'}), 500
+
+    return jsonify({'error': 'Invalid file type'}), 400
 
 @app.route('/delete_employee', methods=['GET', 'POST'])
 def delete_employee():
@@ -488,7 +528,7 @@ def delete_employee():
 
     # Fetch only non-admin employees
     employees = Employee.query.filter_by(is_admin=False).all()
-    return render_template('delete_employee.html', employees=employees, error=error)
+    return render_template('delete_employee.html', employees=employees, error=error,logged_in_employee=logged_in_employee ,show_profile_picture=True)
 
 @app.route('/toggle_theme', methods=['POST'])
 def toggle_theme():
@@ -636,6 +676,13 @@ def ratelimit_handler(e):
 # Set the path to your ngrok configuration file
 conf.get_default().config_path = os.getenv('CONFIG_PATH')
 conf.get_default().auth_token = os.getenv('NGROK_AUTH_TOKEN')
+
+app.config['UPLOAD_FOLDER'] = 'static/profile_pictures'
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # Limit file size to 2MB
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 if __name__ == '__main__':
     with app.app_context():

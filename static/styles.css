@@ -676,15 +676,53 @@ header {
     position: relative;
 }
 
-.theme-toggle-form {
-    margin-left: auto;
+.theme-and-profile {
     position: absolute;
     top: 10px;
-    right: 50px;
+    right: 30px;
+    display: flex;
+    align-items: center;
+    gap: 10px; /* spacing between button and picture */
+}
+
+.theme-toggle-form {
     background: none;
-    box-shadow: none;
     padding: 0;
-    border-radius: 25px;
+    box-shadow: none;
+    border: none;
+}
+
+#theme-toggle-button {
+    font-size: 24px;
+    border: none;
+    cursor: pointer;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    transition: background 0.5s ease-in-out;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 8px rgba(0,0,0,0.1);
+}
+
+/* Light mode = Moon = dark background */
+#theme-toggle-button.light {
+    background: linear-gradient(135deg, #111 30%, #333 100%);
+    color: #fff;
+}
+
+/* Dark mode = Sun = bright background */
+#theme-toggle-button.dark {
+    background: radial-gradient(circle at top left, #ffe680, #ffcc00);
+    color: #333;
+}
+
+.profile-picture img {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    object-fit: cover;
 }
 
 body.dark .theme-toggle-form {
