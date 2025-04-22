@@ -13,21 +13,26 @@
 <header>
     <div class="header-container">
         <div class="theme-and-profile">
-            <div class="profile-picture">
-                {% if logged_in_employee and show_profile_picture %}
-                    <div class="profile-picture">
-                        {% if logged_in_employee and logged_in_employee.profile_picture %}
+            {% if logged_in_employee and show_profile_picture %}
+<div class="profile-dropdown">
     <img src="{{ url_for('static', filename=logged_in_employee.profile_picture) }}"
          alt="{{ logged_in_employee.name }}'s Profile Picture"
-         class="profile-img">
-{% else %}
-    <img src="{{ url_for('static', filename='profile_pictures/default.png') }}"
-         alt="Default Profile Picture"
-         class="profile-img">
+         class="profile-img" id="profile-toggle">
+
+    <div class="dropdown-menu" id="dropdown-menu">
+        <div class="dropdown-arrow"></div>
+        <a href="{{ url_for('view_clock_history', employee_id=logged_in_employee.id) }}">My History</a>
+        <a href="{{ url_for('reset_request') }}">Reset Password</a>
+        <a href="{{ url_for('edit_employee', employee_id=logged_in_employee.id) }}">
+            <i class="fas fa-user-edit"></i> Edit Myself
+        </a>
+
+        <form action="{{ url_for('logout') }}" method="post" style="background: #429742; box-shadow: none;">
+            <button type="submit" class="dropdown-logout">Logout</button>
+        </form>
+    </div>
+</div>
 {% endif %}
-                    </div>
-                {% endif %}
-            </div>
             <form action="{{ url_for('toggle_theme') }}" method="post" class="theme-toggle-form">
                 <button type="submit" id="theme-toggle-button" class="theme-toggle-btn">
                     {% if request.cookies.get('theme', 'light') == 'light' %}
@@ -37,6 +42,7 @@
                     {% endif %}
                 </button>
             </form>
+        </div>
         </div>
     </div>
 </header>
@@ -50,4 +56,23 @@
         <p>&copy; 2025 ImHere. All rights reserved.</p>
     </footer>
 </body>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const toggle = document.getElementById('profile-toggle');
+    const menu = document.getElementById('dropdown-menu');
+
+    if (toggle && menu) {
+        toggle.addEventListener('click', () => {
+            menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+        });
+
+        // Kliknutí mimo zavře menu
+        window.addEventListener('click', (e) => {
+            if (!toggle.contains(e.target) && !menu.contains(e.target)) {
+                menu.style.display = 'none';
+            }
+        });
+    }
+});
+</script>
 </html>

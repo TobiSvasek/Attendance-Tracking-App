@@ -364,6 +364,46 @@ If you did not expect this email, please ignore it.
 
     mail.send(msg)
 
+@app.route('/edit_employee/<int:employee_id>', methods=['GET', 'POST'])
+def edit_employee(employee_id):
+    if 'employee_id' not in session:
+        return redirect(url_for('login'))
+
+    logged_in_employee = Employee.query.get(session['employee_id'])
+    if not logged_in_employee:
+        return go_back()
+
+    # Každý může upravit sám sebe, admin kohokoliv
+    if not logged_in_employee.is_admin and logged_in_employee.id != employee_id:
+        return go_back()
+
+    employee = Employee.query.get(employee_id)
+    if not employee:
+        return go_back()
+
+    error = None
+    success = None
+
+    if request.method == 'POST':
+        employee.name = request.form.get('name')
+        employee.surname = request.form.get('surname')
+
+        # is_admin může měnit jen admin
+        if logged_in_employee.is_admin:
+            employee.is_admin = 'is_admin' in request.form
+
+        db.session.commit()
+        success = "User updated successfully."
+
+    return render_template(
+        'edit_employee.html',
+        employee=employee,
+        error=error,
+        success=success,
+        logged_in_employee=logged_in_employee,
+        show_profile_picture=True
+    )
+
 
 @app.route('/clock_history/<int:employee_id>')
 def view_clock_history(employee_id):
