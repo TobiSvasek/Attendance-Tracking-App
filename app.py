@@ -381,8 +381,9 @@ def edit_employee(employee_id):
     if not employee:
         return go_back()
 
-    error = None
-    success = None
+    success = request.args.get('success')
+    error = request.args.get('error')
+    success_upload = request.args.get('success_upload')
 
     if request.method == 'POST':
         employee.name = request.form.get('name')
@@ -401,7 +402,8 @@ def edit_employee(employee_id):
         error=error,
         success=success,
         logged_in_employee=logged_in_employee,
-        show_profile_picture=True
+        show_profile_picture=True,
+        success_upload=success_upload
     )
 
 
@@ -505,37 +507,37 @@ def set_details(token):
     return render_template('set_details.html', employee=user)
 
 
+from flask import redirect, url_for, request
+
 @app.route('/upload_profile_picture/<int:employee_id>', methods=['POST'])
 def upload_profile_picture(employee_id):
     if 'profile_picture' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
+        return redirect(url_for('edit_employee', employee_id=employee_id, error='No file selected'))
 
     file = request.files['profile_picture']
     if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
+        return redirect(url_for('edit_employee', employee_id=employee_id, error='No file selected'))
 
     if file and allowed_file(file.filename):
-        # Generate a unique filename
         filename = f"{employee_id}_{secrets.token_hex(8)}.{file.filename.rsplit('.', 1)[1].lower()}"
         relative_path = os.path.join('profile_pictures', filename).replace("\\", "/")
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
         try:
-            # Save the file to the static directory
             file.save(filepath)
-
-            # Update the employee's profile_picture field with the relative path
             employee = Employee.query.get(employee_id)
             if employee:
-                employee.profile_picture = relative_path  # Store relative path
+                employee.profile_picture = relative_path
                 db.session.commit()
-                return '', 204
-            else:
-                return jsonify({'error': 'Employee not found'}), 404
-        except Exception as e:
-            return jsonify({'error': f'File upload failed: {str(e)}'}), 500
+                return redirect(url_for('edit_employee', employee_id=employee.id, success_upload='1'))
 
-    return jsonify({'error': 'Invalid file type'}), 400
+            else:
+                return redirect(url_for('edit_employee', employee_id=employee_id, error='Employee not found'))
+        except Exception as e:
+            return redirect(url_for('edit_employee', employee_id=employee_id, error=f'Upload failed: {str(e)}'))
+
+    return redirect(url_for('edit_employee', employee_id=employee_id, error='Invalid file type'))
+
 
 @app.route('/delete_employee', methods=['GET', 'POST'])
 def delete_employee():
