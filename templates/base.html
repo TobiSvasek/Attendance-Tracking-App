@@ -10,52 +10,55 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body class="{{ request.cookies.get('theme', 'light') }} flex-container">
-<header>
-    <div class="header-container">
-        <div class="theme-and-profile">
-            {% if logged_in_employee and show_profile_picture %}
-<div class="profile-dropdown">
-    <img src="{{ url_for('static', filename=logged_in_employee.profile_picture) }}"
-         alt="{{ logged_in_employee.name }}'s Profile Picture"
-         class="profile-img" id="profile-toggle">
+    <header>
+        <div class="header-container">
+            <div class="theme-and-profile">
+                {% if logged_in_employee and show_profile_picture %}
+                <div class="profile-dropdown">
+                    <img src="{{ url_for('static', filename=logged_in_employee.profile_picture) }}"
+                         alt="{{ logged_in_employee.name }}'s Profile Picture"
+                         class="profile-img" id="profile-toggle">
 
-    <div class="dropdown-menu" id="dropdown-menu">
-        <div class="dropdown-arrow"></div>
-        <a href="{{ url_for('view_clock_history', employee_id=logged_in_employee.id) }}">My History</a>
-        <a href="{{ url_for('reset_request') }}">Reset Password</a>
-        <a href="{{ url_for('edit_employee', employee_id=logged_in_employee.id) }}">
-            <i class="fas fa-user-edit"></i> Edit Myself
-        </a>
+                    <div class="dropdown-menu" id="dropdown-menu">
+                        <div class="dropdown-arrow"></div>
+                        <a href="{{ url_for('view_clock_history', employee_id=logged_in_employee.id) }}">My History</a>
+                        <a href="{{ url_for('reset_request') }}">Reset Password</a>
+                        <a href="{{ url_for('edit_employee', employee_id=logged_in_employee.id) }}">
+                            <i class="fas fa-user-edit"></i> Edit Myself
+                        </a>
 
-        <form action="{{ url_for('logout') }}" method="post" style="background: #429742; box-shadow: none;">
-            <button type="submit" class="dropdown-logout">Logout</button>
-        </form>
-    </div>
-</div>
-{% endif %}
-            <form action="{{ url_for('toggle_theme') }}" method="post" class="theme-toggle-form">
-                <button type="submit" id="theme-toggle-button" class="theme-toggle-btn">
-                    {% if request.cookies.get('theme', 'light') == 'light' %}
-                        🌙
-                    {% else %}
-                        ☀️
-                    {% endif %}
-                </button>
-            </form>
+                        <form action="{{ url_for('logout') }}" method="post" style="background: #429742; box-shadow: none;">
+                            <button type="submit" class="dropdown-logout">Logout</button>
+                        </form>
+                    </div>
+                </div>
+                {% endif %}
+                <form action="{{ url_for('toggle_theme') }}" method="post" class="theme-toggle-form">
+                    <button type="submit" id="theme-toggle-button" class="theme-toggle-btn">
+                        {% if request.cookies.get('theme', 'light') == 'light' %}
+                            🌙
+                        {% else %}
+                            ☀️
+                        {% endif %}
+                    </button>
+                </form>
+            </div>
         </div>
-        </div>
-    </div>
-</header>
+    </header>
+
     <div class="content">
         <div style="text-align: center; margin-top: 20px;">
-            <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" style="max-width: 200px; margin-top: 20px; margin-bottom: 20px;">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo"
+                 style="max-width: 200px; margin-top: 20px; margin-bottom: 20px;">
         </div>
         {% block content %}{% endblock %}
     </div>
+
     <footer>
         <p>&copy; 2025 ImHere. All rights reserved.</p>
     </footer>
 </body>
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const toggle = document.getElementById('profile-toggle');
@@ -66,7 +69,6 @@ document.addEventListener('DOMContentLoaded', function () {
             menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
         });
 
-        // Kliknutí mimo zavře menu
         window.addEventListener('click', (e) => {
             if (!toggle.contains(e.target) && !menu.contains(e.target)) {
                 menu.style.display = 'none';

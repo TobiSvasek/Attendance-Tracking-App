@@ -1,14 +1,19 @@
 body.light {
     background-color: #f7f7f7; /* Softer background color */
     color: #333; /* Darker text color for better contrast */
-    background-image: url("https://www.freevector.com/uploads/vector/preview/90951/vecteezySubtleBackgroundFV0223_generated.jpg");
+    background-image: url('/static/backgrounds/imhere_bg_light.jpg');
     background-size: cover;
     background-repeat: no-repeat;
+    background-attachment: fixed;
 }
 
 body.dark {
     background-color: #444;
     color: #fff;
+    background-image: url('/static/backgrounds/imhere_bg_dark.jpg');
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
 }
 
 body {
