@@ -483,28 +483,39 @@ def set_details(token):
     if not user:
         return render_template('link_expired.html')
 
+    error = None
+    success = None
+
     if request.method == 'POST':
         name = request.form['name']
         surname = request.form['surname']
         password = request.form['password']
         confirm_password = request.form['confirm_password']
 
+        # 🖼️ ZPRACOVÁNÍ PROFILOVKY (nepovinné)
+        file = request.files.get('profile_picture')
+        if file and file.filename and allowed_file(file.filename):
+            filename = f"{user.id}_{secrets.token_hex(8)}.{file.filename.rsplit('.', 1)[1].lower()}"
+            relative_path = os.path.join('profile_pictures', filename).replace("\\", "/")
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            user.profile_picture = relative_path
+
+        # ✅ Validace hesla
         if password != confirm_password:
             error = "Passwords do not match. Please try again."
-            return render_template('set_details.html', error=error, employee=user)
-
-        if not is_strong_password(password):
+        elif not is_strong_password(password):
             error = "Password is not strong enough. It must be at least 8 characters long, contain an uppercase letter, a lowercase letter, and a number."
-            return render_template('set_details.html', error=error, employee=user)
+        else:
+            user.name = name
+            user.surname = surname
+            user.set_password(password)
+            user.is_authenticated = True
+            db.session.commit()
+            return redirect(url_for('login', message='Details successfully set.'))
 
-        user.name = name
-        user.surname = surname
-        user.set_password(password)
-        user.is_authenticated = True  # Set is_authenticated to True
-        db.session.commit()
-        return redirect(url_for('login', message='Details successfully set.'))
+    return render_template('set_details.html', employee=user, error=error)
 
-    return render_template('set_details.html', employee=user)
 
 
 from flask import redirect, url_for, request
@@ -574,11 +585,19 @@ def delete_employee():
 
 @app.route('/toggle_theme', methods=['POST'])
 def toggle_theme():
+    if request.method == 'POST':
+        try:
+            # Only apply rate limiting here:
+            limiter.limit("5 per minute", key_func=custom_login_key)(lambda: None)()
+        except RateLimitExceeded as e:
+            return render_template("429.html", retry_after=int(
+                e.description.split(' ')[-1]) if "Retry-After" in e.description else 60), 429
     current_theme = request.cookies.get('theme', 'light')
     new_theme = 'dark' if current_theme == 'light' else 'light'
     response = make_response(redirect(request.referrer))
     response.set_cookie('theme', new_theme, max_age=60*60*24*30)  # Cookie expires in 30 days
     return response
+
 
 @app.route('/logout', methods=['POST'])
 def logout():
