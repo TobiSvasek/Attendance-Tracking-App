@@ -16,6 +16,7 @@ body.dark {
     background-attachment: fixed;
 }
 
+
 body {
     font-family: 'Dela Gothic One', sans-serif;
     background-color: #f4f4f4;
@@ -432,10 +433,6 @@ button:hover {
 body.light {
     background-color: #f7f7f7; /* Softer background color */
     color: black;
-}
-
-body.light form {
-    background: #f9f9f9; /* Softer background color */
 }
 
 body.dark {
