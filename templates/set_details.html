@@ -3,12 +3,19 @@
 {% block title %}Set Details{% endblock %}
 
 {% block content %}
-<form method="post">
+<form method="post" enctype="multipart/form-data">
+    <!-- Upload obrázku -->
+    <label for="profile_picture">Profile Picture:</label><br>
+    <input type="file" id="profile_picture" name="profile_picture" accept="image/*" class="form-input" style="border: none;"><br><br>
+
+    <!-- Jméno, příjmení, heslo -->
     <input type="text" name="name" placeholder="Enter your name" required class="form-input">
     <input type="text" name="surname" placeholder="Enter your surname" required class="form-input">
     <input type="password" name="password" placeholder="Enter your password" required class="form-input">
     <input type="password" name="confirm_password" placeholder="Confirm your password" required class="form-input">
+
     <button type="submit">Set Details</button>
+
     {% if error %}
         <p style="color: red;">{{ error }}</p>
     {% endif %}

@@ -22,9 +22,13 @@ import threading
 from datetime import datetime, timedelta
 import hashlib
 from flask_limiter import Limiter
+from flask_limiter.errors import RateLimitExceeded
 from flask_limiter.util import get_remote_address
+from redis import Redis
+from flask_socketio import SocketIO, emit
 
 app = Flask(__name__, template_folder='templates')
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 load_dotenv()
 
@@ -44,17 +48,18 @@ migrate = Migrate(app, db)
 class Employee(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    name = db.Column(db.String(100), nullable=True)  # Changed to nullable=True
-    surname = db.Column(db.String(100), nullable=True)  # Changed to nullable=True
+    name = db.Column(db.String(100), nullable=True)
+    surname = db.Column(db.String(100), nullable=True)
     password_hash = db.Column(db.String(255), nullable=False)
     uid = db.Column(db.String(50), unique=True, nullable=True)
     status_id = db.Column(db.Integer, db.ForeignKey('status.id'), nullable=True)
     is_admin = db.Column(db.Boolean, default=False)
     is_authenticated = db.Column(db.Boolean, default=False)
     session_token = db.Column(db.String(64), nullable=True)
+    profile_picture = db.Column(db.String(255), nullable=True, default='profile_pictures/default.png')
 
     status = db.relationship('Status', backref='employees')
-    attendances = db.relationship('Attendance', backref='employee', lazy=True)
+    attendances = db.relationship('Attendance', backref='employee', lazy=True, cascade="all, delete-orphan")
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -131,29 +136,44 @@ def restrict_ip(allowed_ips):
         return wrapped
     return decorator
 
+redis_client = Redis(host='localhost', port=6379, db=0)
+
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=["200 per day", "50 per hour"]
+    storage_uri="redis://localhost:6379/0",
+    default_limits=[]
 )
 
 def custom_login_key():
-    return f"{get_remote_address()}:{request.form.get('email', '')}"
+    if request.method == 'POST':
+        return f"{get_remote_address()}:{request.form.get('email', '')}"
+    return get_remote_address()
+
+@app.context_processor
+def inject_logged_in_employee():
+    if 'employee_id' in session:
+        employee = Employee.query.get(session['employee_id'])
+        return dict(logged_in_employee=employee)
+    return dict(logged_in_employee=None)
+
+@socketio.on('connect')
+def handle_connect():
+    print("Reader initialized.")
 
 @app.route('/')
 def index():
     return redirect(url_for('login'))
 
+
 @app.route('/main', methods=['GET', 'POST'])
-@restrict_ip([
-    '2a00:11b7:1228:1f00:c5c7:2b06:a34b:12b8',
-    '31.30.160.221'
-])
+@restrict_ip(os.getenv('ALLOWED_IPS', '').split(','))
 def main_page():
     if request.method == 'POST':
         employee_id = request.form.get('employee_id')
         return redirect(url_for('nfc_redirect', employee_id=employee_id))
     return render_template('main.html')
+
 
 @app.route('/nfc_redirect', methods=['POST'])
 def nfc_redirect():
@@ -164,11 +184,9 @@ def nfc_redirect():
     else:
         return redirect(url_for('employee_status', employee_id=employee_id))
 
+
 @app.route('/employee_status/<int:employee_id>', methods=['GET', 'POST'])
-@restrict_ip([
-    '2a00:11b7:1228:1f00:c5c7:2b06:a34b:12b8',
-    '31.30.160.221'
-])
+@restrict_ip(os.getenv('ALLOWED_IPS', '').split(','))
 def employee_status(employee_id):
     employee = Employee.query.get(employee_id)
     if not employee or not employee.is_authenticated:
@@ -193,6 +211,7 @@ def employee_status(employee_id):
     employees = Employee.query.all() if employee.is_admin else None
 
     return render_template('employee_status.html', employee=employee, success_message=success_message, error_message=error_message, employees=employees, statuses=statuses)
+
 
 @app.route('/clock/<int:employee_id>', methods=['GET', 'POST'])
 def clock(employee_id):
@@ -231,16 +250,22 @@ def clock(employee_id):
     employees = Employee.query.all() if logged_in_employee.is_admin else None
     attendances = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.update_time.desc()).all()
 
-    return render_template('clock.html', employee=employee, success_message=success_message, error_message=error_message, employees=employees, statuses=statuses, attendances=attendances)
+    return render_template('clock.html', employee=employee, success_message=success_message, error_message=error_message, employees=employees, statuses=statuses, attendances=attendances,logged_in_employee=logged_in_employee ,show_profile_picture=True)
 
 
 @app.route('/login', methods=['GET', 'POST'])
-@limiter.limit("5 per minute", key_func=custom_login_key)
 def login():
     error = None
     message = request.args.get('message')
 
     if request.method == 'POST':
+        try:
+            # Only apply rate limiting here:
+            limiter.limit("5 per minute", key_func=custom_login_key)(lambda: None)()
+        except RateLimitExceeded as e:
+            return render_template("429.html", retry_after=int(e.description.split(' ')[-1]) if "Retry-After" in e.description else 60), 429
+
+        # Continue with login logic
         email = request.form['email']
         password = request.form['password']
         employee = Employee.query.filter_by(email=email).first()
@@ -264,6 +289,7 @@ def login():
     return render_template('login.html', error=error, message=message)
 
 @app.route('/reset_request', methods=['GET', 'POST'])
+@limiter.limit("5 per minute", key_func=custom_login_key)
 def reset_request():
     error = None
     if request.method == 'POST':
@@ -277,12 +303,19 @@ def reset_request():
     return render_template('reset_request.html', error=error)
 
 @app.route('/reset_password/<token>', methods=['GET', 'POST'])
+@limiter.limit("5 per minute", key_func=custom_login_key)
 def reset_token(token):
     user = Employee.verify_reset_token(token)
     if not user:
         return render_template('link_expired.html')
+
     if request.method == 'POST':
         password = request.form['password']
+        confirm_password = request.form['confirm_password']
+        if password != confirm_password:
+            error = "Passwords do not match. Please try again."
+
+            return render_template('reset_token.html', error=error)
         if not is_strong_password(password):
             error = "Password is not strong enough. It must be at least 8 characters long, contain an uppercase letter, a lowercase letter, a number."
             return render_template('reset_token.html', error=error)
@@ -331,6 +364,49 @@ If you did not expect this email, please ignore it.
 
     mail.send(msg)
 
+@app.route('/edit_employee/<int:employee_id>', methods=['GET', 'POST'])
+def edit_employee(employee_id):
+    if 'employee_id' not in session:
+        return redirect(url_for('login'))
+
+    logged_in_employee = Employee.query.get(session['employee_id'])
+    if not logged_in_employee:
+        return go_back()
+
+    # Každý může upravit sám sebe, admin kohokoliv
+    if not logged_in_employee.is_admin and logged_in_employee.id != employee_id:
+        return go_back()
+
+    employee = Employee.query.get(employee_id)
+    if not employee:
+        return go_back()
+
+    success = request.args.get('success')
+    error = request.args.get('error')
+    success_upload = request.args.get('success_upload')
+
+    if request.method == 'POST':
+        employee.name = request.form.get('name')
+        employee.surname = request.form.get('surname')
+
+        # is_admin může měnit jen admin
+        if logged_in_employee.is_admin:
+            employee.is_admin = 'is_admin' in request.form
+
+        db.session.commit()
+        success = "User updated successfully."
+
+    return render_template(
+        'edit_employee.html',
+        employee=employee,
+        error=error,
+        success=success,
+        logged_in_employee=logged_in_employee,
+        show_profile_picture=True,
+        success_upload=success_upload
+    )
+
+
 @app.route('/clock_history/<int:employee_id>')
 def view_clock_history(employee_id):
     if not is_valid_session():
@@ -348,7 +424,7 @@ def view_clock_history(employee_id):
         return go_back()
 
     attendances = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.update_time.desc()).all()
-    return render_template('clock_history.html', employee=employee, attendances=attendances, is_admin=logged_in_employee.is_admin, admin_id=logged_in_employee_id)
+    return render_template('clock_history.html', employee=employee, attendances=attendances, is_admin=logged_in_employee.is_admin, admin_id=logged_in_employee_id, logged_in_employee=logged_in_employee,show_profile_picture=True)
 
 def generate_random_password(length=12):
     """Generate a secure random password."""
@@ -359,55 +435,47 @@ FIRST_NAME = "NEW"
 SURNAME = "USER"
 @app.route('/add_employee', methods=['GET', 'POST'])
 def add_employee():
-    global scanned_card_uid
     error = None
     success_message = None
 
-    # Check if the user is logged in
     if 'employee_id' not in session:
         return redirect(url_for('login'))
 
-    logged_in_employee_id = session['employee_id']
-    logged_in_employee = Employee.query.get(logged_in_employee_id)
-
-    # Check if the logged-in user is an admin
+    logged_in_employee = Employee.query.get(session['employee_id'])
     if not logged_in_employee.is_admin:
         return go_back()
 
     if request.method == 'POST':
         email = request.form['email']
-        uid = request.form.get('uid')
-        isAdmin = 'is_admin' in request.form
+        uid_raw = request.form.get('uid')
+        is_admin = 'is_admin' in request.form
 
-        if not uid:
+        if not uid_raw:
             error = "No NFC card scanned. Please scan the card first."
         else:
-            # Hash the UID before processing
-            hashed_uid = hashlib.sha256(uid.encode()).hexdigest()
+            hashed_uid = hashlib.sha256(uid_raw.encode()).hexdigest()
 
             if Employee.query.filter_by(email=email).first():
                 error = "An employee with this email already exists."
             elif Employee.query.filter_by(uid=hashed_uid).first():
-                error = "An employee with this NFC UID already exists."
+                error = "This NFC card is already assigned to another employee."
             else:
                 new_employee = Employee(
                     email=email,
-                    uid=hashed_uid,  # Store the hashed UID
-                    is_admin=isAdmin,
-                    name=FIRST_NAME,
-                    surname=SURNAME
+                    uid=hashed_uid,
+                    is_admin=is_admin,
+                    name="NEW",
+                    surname="USER",
+                    profile_picture='profile_pictures/default.png'
                 )
-                random_password = generate_random_password()
-                new_employee.set_password(random_password)
+                new_employee.set_password(generate_random_password())
                 db.session.add(new_employee)
                 db.session.commit()
 
                 send_set_details_email(new_employee)
-                scanned_card_uid = None  # Clear UID after assigning
+                success_message = "Employee added successfully!"
 
-                success_message = f"Employee added successfully!"
-
-    return render_template('add_employee.html', error=error, success_message=success_message)
+    return render_template('add_employee.html', error=error, success_message=success_message,logged_in_employee=logged_in_employee ,show_profile_picture=True)
 
 @app.route('/set_details/<token>', methods=['GET', 'POST'])
 def set_details(token):
@@ -415,28 +483,72 @@ def set_details(token):
     if not user:
         return render_template('link_expired.html')
 
+    error = None
+    success = None
+
     if request.method == 'POST':
         name = request.form['name']
         surname = request.form['surname']
         password = request.form['password']
         confirm_password = request.form['confirm_password']
 
+        # 🖼️ ZPRACOVÁNÍ PROFILOVKY (nepovinné)
+        file = request.files.get('profile_picture')
+        if file and file.filename and allowed_file(file.filename):
+            filename = f"{user.id}_{secrets.token_hex(8)}.{file.filename.rsplit('.', 1)[1].lower()}"
+            relative_path = os.path.join('profile_pictures', filename).replace("\\", "/")
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            user.profile_picture = relative_path
+
+        # ✅ Validace hesla
         if password != confirm_password:
             error = "Passwords do not match. Please try again."
-            return render_template('set_details.html', error=error)
-
-        if not is_strong_password(password):
+        elif not is_strong_password(password):
             error = "Password is not strong enough. It must be at least 8 characters long, contain an uppercase letter, a lowercase letter, and a number."
-            return render_template('set_details.html', error=error)
+        else:
+            user.name = name
+            user.surname = surname
+            user.set_password(password)
+            user.is_authenticated = True
+            db.session.commit()
+            return redirect(url_for('login', message='Details successfully set.'))
 
-        user.name = name
-        user.surname = surname
-        user.set_password(password)
-        user.is_authenticated = True  # Set is_authenticated to True
-        db.session.commit()
-        return redirect(url_for('login', message='Details successfully set.'))
+    return render_template('set_details.html', employee=user, error=error)
 
-    return render_template('set_details.html')
+
+
+from flask import redirect, url_for, request
+
+@app.route('/upload_profile_picture/<int:employee_id>', methods=['POST'])
+def upload_profile_picture(employee_id):
+    if 'profile_picture' not in request.files:
+        return redirect(url_for('edit_employee', employee_id=employee_id, error='No file selected'))
+
+    file = request.files['profile_picture']
+    if file.filename == '':
+        return redirect(url_for('edit_employee', employee_id=employee_id, error='No file selected'))
+
+    if file and allowed_file(file.filename):
+        filename = f"{employee_id}_{secrets.token_hex(8)}.{file.filename.rsplit('.', 1)[1].lower()}"
+        relative_path = os.path.join('profile_pictures', filename).replace("\\", "/")
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+        try:
+            file.save(filepath)
+            employee = Employee.query.get(employee_id)
+            if employee:
+                employee.profile_picture = relative_path
+                db.session.commit()
+                return redirect(url_for('edit_employee', employee_id=employee.id, success_upload='1'))
+
+            else:
+                return redirect(url_for('edit_employee', employee_id=employee_id, error='Employee not found'))
+        except Exception as e:
+            return redirect(url_for('edit_employee', employee_id=employee_id, error=f'Upload failed: {str(e)}'))
+
+    return redirect(url_for('edit_employee', employee_id=employee_id, error='Invalid file type'))
+
 
 @app.route('/delete_employee', methods=['GET', 'POST'])
 def delete_employee():
@@ -469,15 +581,23 @@ def delete_employee():
 
     # Fetch only non-admin employees
     employees = Employee.query.filter_by(is_admin=False).all()
-    return render_template('delete_employee.html', employees=employees, error=error)
+    return render_template('delete_employee.html', employees=employees, error=error,logged_in_employee=logged_in_employee ,show_profile_picture=True)
 
 @app.route('/toggle_theme', methods=['POST'])
 def toggle_theme():
+    if request.method == 'POST':
+        try:
+            # Only apply rate limiting here:
+            limiter.limit("5 per minute", key_func=custom_login_key)(lambda: None)()
+        except RateLimitExceeded as e:
+            return render_template("429.html", retry_after=int(
+                e.description.split(' ')[-1]) if "Retry-After" in e.description else 60), 429
     current_theme = request.cookies.get('theme', 'light')
     new_theme = 'dark' if current_theme == 'light' else 'light'
     response = make_response(redirect(request.referrer))
     response.set_cookie('theme', new_theme, max_age=60*60*24*30)  # Cookie expires in 30 days
     return response
+
 
 @app.route('/logout', methods=['POST'])
 def logout():
@@ -491,8 +611,7 @@ def logout():
 scanned_card_uid = None
 
 def nfc_card_scanner():
-    """Continuously scans for NFC cards and updates the scanned UID."""
-    global scanned_card_uid
+    """Continuously scans for NFC cards and emits event via WebSocket."""
     r = readers()
     if not r:
         print("No NFC reader detected.")
@@ -500,6 +619,7 @@ def nfc_card_scanner():
 
     reader = r[0]
     connection = reader.createConnection()
+    last_uid = None
 
     while True:
         try:
@@ -509,17 +629,32 @@ def nfc_card_scanner():
 
             if sw1 == 0x90 and sw2 == 0x00:
                 uid = toHexString(response)
-                if scanned_card_uid != uid:
-                    scanned_card_uid = uid
-                    print(f"Card detected: {uid}")
-            else:
-                scanned_card_uid = None
-        except NoCardException:
-            scanned_card_uid = None
-        except Exception as e:
-            print(f"Error: {e}")
 
-# Start the NFC scanner in a separate thread
+                if uid != last_uid:
+                    last_uid = uid
+                    print(f"Card detected: {uid}")
+
+                    hashed_uid = hashlib.sha256(uid.encode()).hexdigest()
+
+                    with app.app_context():
+                        employee = Employee.query.filter_by(uid=hashed_uid).first()
+
+                        if employee:
+                            print(f"Card belongs to employee_id={employee.id}")
+                            socketio.emit('card_scanned', {'employee_id': employee.id})
+                        else:
+                            print("Card not assigned, emitting raw UID")
+                            socketio.emit('card_scanned', {'uid': uid})
+
+            else:
+                last_uid = None
+
+        except NoCardException:
+            last_uid = None
+        except Exception as e:
+            print(f"[NFC ERROR] {e}")
+
+
 threading.Thread(target=nfc_card_scanner, daemon=True).start()
 
 @app.route('/check_card', methods=['GET'])
@@ -567,7 +702,6 @@ def fetch_attendance(employee_id):
     attendance_dates = [a.update_time.strftime('%Y-%m-%d') for a in attendance]
     return jsonify({'attendance': list(set(attendance_dates))})
 
-
 @app.route('/fetch_attendance_day/<int:employee_id>', methods=['GET'])
 def fetch_attendance_day(employee_id):
     if not is_valid_session():
@@ -604,10 +738,17 @@ def ratelimit_handler(e):
 conf.get_default().config_path = os.getenv('CONFIG_PATH')
 conf.get_default().auth_token = os.getenv('NGROK_AUTH_TOKEN')
 
+app.config['UPLOAD_FOLDER'] = 'static/profile_pictures'
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # Limit file size to 2MB
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     # Start ngrok tunnel
     public_url = ngrok.connect(5000)
     print(" * ngrok tunnel \"{}\" -> \"http://127.0.0.1:5000\"".format(public_url))
-    app.run(debug=True, use_reloader=False)
+    socketio.run(app, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)
