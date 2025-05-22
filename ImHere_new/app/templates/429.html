@@ -68,7 +68,7 @@
         <h1>⏱️ Rate Limit Reached</h1>
         <p>You've sent too many requests in a short time.</p>
         <p>Try again in <span class="timer" id="countdown">{{ retry_after }}</span> seconds.</p>
-        <form action="{{ url_for('login') }}" method="get">
+        <form action="{{ url_for('auth.login') }}" method="get">
             <button id="back-button" type="submit" disabled>Back</button>
         </form>
     </div>
@@ -91,3 +91,4 @@
     </script>
 </body>
 </html>
+
