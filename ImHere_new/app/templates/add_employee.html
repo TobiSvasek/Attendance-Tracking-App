@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Add Employee{% endblock %}
+
+{% block content %}
+<h2>Add New Employee</h2>
+
+<form method="post">
+    <input type="email" name="email" placeholder="Email" required class="form-input">
+
+    <!-- Hidden field for UID -->
+    <input type="hidden" name="uid" id="uid">
+
+    <!-- Button to start scanning -->
+    <button style="background-color: #555454" type="button" id="scan-uid-button">Scan NFC Card</button>
+    <p id="uid-display" style="color: blue;"></p>
+
+    <label class="form-checkbox">
+        <input type="checkbox" name="is_admin"> Is Admin
+    </label>
+
+    <button type="submit">Add Employee</button>
+
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% endif %}
+    {% if success_message %}
+        <p style="color: green;">{{ success_message }}</p>
+    {% endif %}
+</form>
+
+<!-- Back button -->
+<form action="{{ url_for('employee.clock', employee_id=session['employee_id']) }}" method="get">
+    <button type="submit" style="background-color: indianred;">Back</button>
+</form>
+
+<script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+<script>
+    const socket = io();
+    const uidField = document.getElementById('uid');
+    const display = document.getElementById('uid-display');
+    const scanButton = document.getElementById('scan-uid-button');
+    let scanning = false;
+
+    socket.on('connect', () => {
+        console.log('Reader initialized');
+    });
+
+    socket.on('card_scanned', function(data) {
+        if (!scanning) return;
+
+        if (data.uid) {
+            uidField.value = data.uid;
+            display.innerText = `✅ Scanned UID: ${data.uid}`;
+            scanning = false;
+        } else {
+            display.innerText = "⚠️ Card is already assigned to an employee.";
+        }
+    });
+
+    scanButton.addEventListener('click', function () {
+        scanning = true;
+        uidField.value = '';
+        display.innerText = "Waiting for NFC card...";
+    });
+</script>
+{% endblock %}

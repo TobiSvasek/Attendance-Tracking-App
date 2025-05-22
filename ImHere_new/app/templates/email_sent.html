@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}Email Sent{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <h2>Email Sent</h2>
+    <p>A password reset link has been sent to your email address.</p>
+    <p>Please check your inbox and follow the instructions in the email.</p>
+
+    <form action="{{ url_for('auth.login') }}" method="get">
+        <button type="submit" class="back-button">Back to Login</button>
+    </form>
+</div>
+{% endblock %}
+

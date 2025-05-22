@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Employee Manager{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="{{ url_for('static', filename='scripts/animations.js') }}" defer></script>
+    <link rel="icon" type="image" href="{{ url_for('static', filename='logo-small-n.png') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body class="{{ request.cookies.get('theme', 'light') }} flex-container">
+    <header>
+        <div class="header-container">
+            <div class="theme-and-profile">
+                {% if logged_in_employee and show_profile_picture %}
+                <div class="profile-dropdown">
+                    <img src="{{ url_for('static', filename=logged_in_employee.profile_picture) }}"
+                         alt="{{ logged_in_employee.name }}'s Profile Picture"
+                         class="profile-img" id="profile-toggle">
+
+                    <div class="dropdown-menu" id="dropdown-menu">
+                        <div class="dropdown-arrow"></div>
+                        <a href="{{ url_for('employee.view_clock_history', employee_id=logged_in_employee.id) }}">My History</a>
+                        <a href="{{ url_for('auth.reset_request') }}">Reset Password</a>
+                        <a href="{{ url_for('employee.edit_employee', employee_id=logged_in_employee.id) }}">
+                            <i class="fas fa-user-edit"></i> Edit Myself
+                        </a>
+
+                        <form action="{{ url_for('auth.logout') }}" method="post" style="background: #429742; box-shadow: none;">
+                            <button type="submit" class="dropdown-logout">Logout</button>
+                        </form>
+                    </div>
+                </div>
+                {% endif %}
+                <form action="{{ url_for('main.toggle_theme') }}" method="post" class="theme-toggle-form">
+                    <button type="submit" id="theme-toggle-button" class="theme-toggle-btn">
+                        {% if request.cookies.get('theme', 'light') == 'light' %}
+                            🌙
+                        {% else %}
+                            ☀️
+                        {% endif %}
+                    </button>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    <div class="content">
+        <div style="text-align: center; margin-top: 20px;">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo"
+                 style="max-width: 200px; margin-top: 20px; margin-bottom: 20px;">
+        </div>
+        {% block content %}{% endblock %}
+    </div>
+
+    <footer>
+        <p>&copy; 2025 ImHere. All rights reserved.</p>
+    </footer>
+</body>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const toggle = document.getElementById('profile-toggle');
+    const menu = document.getElementById('dropdown-menu');
+
+    if (toggle && menu) {
+        toggle.addEventListener('click', () => {
+            menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+        });
+
+        window.addEventListener('click', (e) => {
+            if (!toggle.contains(e.target) && !menu.contains(e.target)) {
+                menu.style.display = 'none';
+            }
+        });
+    }
+});
+</script>
+</html>

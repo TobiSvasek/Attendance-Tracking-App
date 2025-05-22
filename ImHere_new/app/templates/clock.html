@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}Personal Page{% endblock %}
+
+{% block content %}
+<h1>Welcome, {{ employee.name }}!</h1>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <ul class="flashes">
+      {% for category, message in messages %}
+        <li class="{{ category }}" id="success-message">{{ message }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endwith %}
+
+{% if error_message %}
+  <p style="color: red;">{{ error_message }}</p>
+{% endif %}
+
+{% if employee.is_admin %}
+  <div class="admin-panel">
+    <h1><u>Admin Panel</u></h1>
+    <h2>Employees</h2>
+    <div class="table-container">
+      <div class="table-header">
+        <span>Employee Name</span>
+        <span>Current Status</span>
+        <span>Last Update</span>
+      </div>
+      <div class="table-body {% if employees|length > 4 %}scrollable-listA{% endif %}">
+        {% for emp in employees %}
+          <a href="{{ url_for('employee.view_clock_history', employee_id=emp.id) }}" class="table-row">
+            <span>
+              {{ emp.name }} {{ emp.surname }}
+              {% if emp.is_admin %}
+                <i class="fas fa-crown" style="color: gold;"></i>
+              {% endif %}
+            </span>
+            <span class="status-{{ emp.status.name | lower | replace(' ', '') }}">{{ emp.status.name }}</span>
+            {% if emp.attendances|length > 0 %}
+              <span>{{ emp.attendances[-1].update_time.strftime('%d. %m. %Y %H:%M:%S') }}</span>
+            {% else %}
+              <span>N/A</span>
+            {% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+    <form action="{{ url_for('admin.add_employee') }}" method="get">
+      <button type="submit" class="add-employee-button">Add Employee</button>
+    </form>
+    <form action="{{ url_for('admin.delete_employee') }}" method="get">
+      <button type="submit" class="delete-employee-button">Delete User</button>
+    </form>
+  </div>
+{% else %}
+  <h2>Attendance History</h2>
+  <div class="calendar">
+    <div class="calendar-header">
+      <button id="prev-month">&lt;</button>
+      <span id="month-year"></span>
+      <button id="next-month">&gt;</button>
+    </div>
+    <div class="calendar-weekdays">
+      <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+    </div>
+    <div class="calendar-days" id="calendar-days"></div>
+  </div>
+
+  <div id="attendance-panel" style="display: none;">
+    <h2>Attendance for <span id="selected-date"></span></h2>
+    <div class="clock-history-panel">
+      <div class="table-header">
+        <span>Date and Time</span>
+        <span>Status</span>
+      </div>
+      <ul class="scrollable-list" id="attendance-list"></ul>
+    </div>
+  </div>
+{% endif %}
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const calendarDays = document.getElementById('calendar-days');
+    const monthYear = document.getElementById('month-year');
+    const prevMonth = document.getElementById('prev-month');
+    const nextMonth = document.getElementById('next-month');
+    const attendancePanel = document.getElementById('attendance-panel');
+    const attendanceList = document.getElementById('attendance-list');
+    const selectedDate = document.getElementById('selected-date');
+
+    let currentDate = new Date();
+    const employeeId = {{ employee.id }};
+
+    function fetchAttendance(month, year) {
+      fetch(`{{ url_for('main.fetch_attendance', employee_id=employee.id) }}?month=${month}&year=${year}`)
+        .then(response => response.json())
+        .then(data => renderCalendar(data.attendance))
+        .catch(error => console.error('Error fetching attendance:', error));
+    }
+
+    function renderCalendar(attendance) {
+      const month = currentDate.getMonth();
+      const year = currentDate.getFullYear();
+      const today = new Date();
+
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      calendarDays.innerHTML = '';
+      monthYear.textContent = currentDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+      for (let i = 0; i < firstDay; i++) {
+        calendarDays.innerHTML += '<span class="empty"></span>';
+      }
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const isPresent = attendance.includes(date);
+        const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
+
+        calendarDays.innerHTML += `
+          <span class="day ${isPresent ? 'present' : ''} ${isToday ? 'current-day' : ''}" data-date="${date}">
+            ${day}
+          </span>`;
+      }
+
+      document.querySelectorAll('.day.present').forEach(day => {
+        day.addEventListener('click', function () {
+          const date = this.getAttribute('data-date');
+          selectedDate.textContent = date;
+          fetchAttendanceForDay(date);
+        });
+      });
+    }
+
+    function fetchAttendanceForDay(date) {
+      fetch(`{{ url_for('main.fetch_attendance_day', employee_id=employee.id) }}?date=${date}`)
+        .then(response => response.json())
+        .then(data => {
+          attendanceList.innerHTML = '';
+          data.attendance.forEach(record => {
+            attendanceList.innerHTML += `
+              <li>
+                <span>${record.time}</span>
+                <span class="status-${record.status.toLowerCase().replace(' ', '')}">${record.status}</span>
+              </li>`;
+          });
+          attendancePanel.style.display = 'block';
+        })
+        .catch(error => console.error('Error fetching attendance for day:', error));
+    }
+
+    prevMonth.addEventListener('click', function () {
+      currentDate.setMonth(currentDate.getMonth() - 1);
+      fetchAttendance(currentDate.getMonth() + 1, currentDate.getFullYear());
+    });
+
+    nextMonth.addEventListener('click', function () {
+      currentDate.setMonth(currentDate.getMonth() + 1);
+      fetchAttendance(currentDate.getMonth() + 1, currentDate.getFullYear());
+    });
+
+    if (calendarDays) {
+      fetchAttendance(currentDate.getMonth() + 1, currentDate.getFullYear());
+    }
+  });
+
+  setTimeout(function () {
+    var successMessage = document.getElementById('success-message');
+    if (successMessage) {
+      successMessage.style.display = 'none';
+    }
+  }, 5000);
+</script>
+{% endblock %}

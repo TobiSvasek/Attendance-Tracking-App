@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Link Expired{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <h2>Link Expired</h2>
+    <p>The password reset link has expired or is invalid.</p>
+
+    <form action="{{ url_for('auth.reset_request') }}" method="get">
+        <button type="submit" class="reset-button">Request New Link</button>
+    </form>
+    <form action="{{ url_for('auth.login') }}" method="get">
+        <button type="submit" class="back-button">Back to Login</button>
+    </form>
+</div>
+{% endblock %}
+

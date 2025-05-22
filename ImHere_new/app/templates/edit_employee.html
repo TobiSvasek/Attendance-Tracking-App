@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Employee{% endblock %}
+
+{% block content %}
+<h2>Edit Profile</h2>
+
+<!-- Formulář pro nahrání profilového obrázku -->
+<form method="post" enctype="multipart/form-data" action="{{ url_for('employee.upload_profile_picture', employee_id=employee.id) }}" class="profile-form">
+    <div class="profile-picture-container">
+        <img src="{{ url_for('static', filename=employee.profile_picture or 'profile_pictures/default.png') }}"
+             alt="Current Profile Picture"
+             class="profile-picture-preview">
+    </div>
+    <input type="file" name="profile_picture" accept="image/*" required>
+    <button type="submit" class="update-profile-button">Update Profile Picture</button>
+    {% if success_upload == '1' %}
+    <p class="success-message">Profile picture uploaded successfully!</p>
+    {% endif %}
+</form>
+
+<!-- Formulář pro úpravu údajů -->
+<form method="post" action="{{ url_for('employee.edit_employee', employee_id=employee.id) }}" class="edit-form">
+    {% if success %}
+        <p class="success-message">{{ success }}</p>
+    {% endif %}
+    {% if error %}
+        <p class="error-message">{{ error }}</p>
+    {% endif %}
+    <input type="text" name="name" value="{{ employee.name }}" placeholder="Enter name" required>
+    <input type="text" name="surname" value="{{ employee.surname }}" placeholder="Enter surname" required>
+
+    {% if logged_in_employee.is_admin %}
+        <label class="admin-checkbox">
+            <input type="checkbox" name="is_admin" {% if employee.is_admin %}checked{% endif %}>
+            <span>Is Admin</span>
+        </label>
+    {% endif %}
+
+    <div class="form-buttons">
+        <button type="submit" class="save-button">Save Changes</button>
+        <button type="button" onclick="window.history.back()" class="back-button">Back</button>
+    </div>
+</form>
+{% endblock %}
