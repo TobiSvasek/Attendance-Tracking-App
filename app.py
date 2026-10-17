@@ -26,6 +26,7 @@ from flask_limiter.errors import RateLimitExceeded
 from flask_limiter.util import get_remote_address
 from redis import Redis
 from flask_socketio import SocketIO, emit
+from sqlalchemy.orm import joinedload, selectinload
 
 app = Flask(__name__, template_folder='templates')
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -247,7 +248,7 @@ def clock(employee_id):
                     success_message = "Status updated successfully!"
 
     statuses = Status.query.all()
-    employees = Employee.query.all() if logged_in_employee.is_admin else None
+    employees = Employee.query.options(joinedload(Employee.status), selectinload(Employee.attendances)).all() if logged_in_employee.is_admin else None
     attendances = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.update_time.desc()).all()
 
     return render_template('clock.html', employee=employee, success_message=success_message, error_message=error_message, employees=employees, statuses=statuses, attendances=attendances,logged_in_employee=logged_in_employee ,show_profile_picture=True)
