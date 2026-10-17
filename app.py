@@ -2,7 +2,7 @@ from flask import Flask, request, redirect, session, make_response
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlparse, urljoin
 from flask_migrate import Migrate
 from flask_mail import Mail
 from itsdangerous import URLSafeTimedSerializer
@@ -108,6 +108,16 @@ def go_back():
 
 def generate_session_token():
     return secrets.token_hex(32)
+
+def is_safe_url(target):
+    if not target:
+        return False
+    # Reject URLs starting with multiple slashes or backslashes
+    if re.match(r'^[/\\]{2,}', target):
+        return False
+    ref_url = urlparse(request.host_url)
+    test_url = urlparse(urljoin(request.host_url, target))
+    return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc
 
 def is_valid_session():
     employee_id = session.get('employee_id')
@@ -280,7 +290,7 @@ def login():
             session['login_time'] = datetime.now().timestamp()
 
             next_page = request.args.get('next')
-            if not next_page or urlsplit(next_page).netloc != '':
+            if not is_safe_url(next_page):
                 next_page = url_for('clock', employee_id=employee.id)
             return redirect(next_page)
         else:
