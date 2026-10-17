@@ -607,9 +607,6 @@ def logout():
     response.set_cookie('theme', theme, max_age=60*60*24*30)
     return response
 
-# Global variable to store the scanned card UID
-scanned_card_uid = None
-
 def nfc_card_scanner():
     """Continuously scans for NFC cards and emits event via WebSocket."""
     r = readers()
@@ -657,26 +654,6 @@ def nfc_card_scanner():
 
 threading.Thread(target=nfc_card_scanner, daemon=True).start()
 
-@app.route('/check_card', methods=['GET'])
-def check_card():
-    """Checks if an NFC card has been scanned and returns the redirect URL."""
-    global scanned_card_uid
-    if scanned_card_uid:
-        uid = hashlib.sha256(scanned_card_uid.encode()).hexdigest()  # Hash the UID
-        scanned_card_uid = None  # Reset the UID after processing
-        employee = Employee.query.filter_by(uid=uid).first()
-        if employee:
-            return jsonify({'redirect_url': url_for('employee_status', employee_id=employee.id)})
-    return jsonify({'redirect_url': None})
-
-@app.route('/check_card_uid', methods=['GET'])
-def check_card_uid():
-    global scanned_card_uid
-    if scanned_card_uid:
-        uid = scanned_card_uid
-        scanned_card_uid = None  # Reset after reading
-        return jsonify({'uid': uid})
-    return jsonify({'uid': None})
 
 @app.route('/fetch_attendance/<int:employee_id>', methods=['GET'])
 def fetch_attendance(employee_id):
