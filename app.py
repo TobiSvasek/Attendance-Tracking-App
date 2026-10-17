@@ -1,15 +1,16 @@
-from flask import Flask, request, redirect, session, make_response
+from flask import Flask, request, redirect, session, make_response, current_app, url_for, render_template, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
-from urllib.parse import urlsplit
+from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.utils import secure_filename
+from urllib.parse import urlsplit, urlparse, urljoin
 from flask_migrate import Migrate
 from flask_mail import Mail
 from itsdangerous import URLSafeTimedSerializer
 import re
 from dotenv import load_dotenv
 import os
-from flask import current_app, url_for, render_template
 from flask_mail import Message
 import secrets
 import string
@@ -17,7 +18,6 @@ from pyngrok import ngrok, conf
 from smartcard.System import readers
 from smartcard.Exceptions import NoCardException
 from smartcard.util import toHexString
-from flask import jsonify
 import threading
 from datetime import datetime, timedelta
 import hashlib
@@ -26,9 +26,14 @@ from flask_limiter.errors import RateLimitExceeded
 from flask_limiter.util import get_remote_address
 from redis import Redis
 from flask_socketio import SocketIO, emit
+from sqlalchemy.orm import joinedload, selectinload
 
 app = Flask(__name__, template_folder='templates')
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+app.wsgi_app = ProxyFix(
+    app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1
+)
 
 load_dotenv()
 
@@ -109,6 +114,16 @@ def go_back():
 def generate_session_token():
     return secrets.token_hex(32)
 
+def is_safe_url(target):
+    if not target:
+        return False
+    # Reject URLs starting with multiple slashes or backslashes
+    if re.match(r'^[/\\]{2,}', target):
+        return False
+    ref_url = urlparse(request.host_url)
+    test_url = urlparse(urljoin(request.host_url, target))
+    return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc
+
 def is_valid_session():
     employee_id = session.get('employee_id')
     session_token = session.get('session_token')
@@ -128,7 +143,7 @@ def restrict_ip(allowed_ips):
         @wraps(f)
         def wrapped(*args, **kwargs):
             print("IP check running")
-            client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+            client_ip = request.remote_addr
             print("Client IP:", client_ip)
             if client_ip not in allowed_ips:
                 return go_back()
@@ -247,7 +262,7 @@ def clock(employee_id):
                     success_message = "Status updated successfully!"
 
     statuses = Status.query.all()
-    employees = Employee.query.all() if logged_in_employee.is_admin else None
+    employees = Employee.query.options(joinedload(Employee.status), selectinload(Employee.attendances)).all() if logged_in_employee.is_admin else None
     attendances = Attendance.query.filter_by(employee_id=employee_id).order_by(Attendance.update_time.desc()).all()
 
     return render_template('clock.html', employee=employee, success_message=success_message, error_message=error_message, employees=employees, statuses=statuses, attendances=attendances,logged_in_employee=logged_in_employee ,show_profile_picture=True)
@@ -280,7 +295,7 @@ def login():
             session['login_time'] = datetime.now().timestamp()
 
             next_page = request.args.get('next')
-            if not next_page or urlsplit(next_page).netloc != '':
+            if not is_safe_url(next_page):
                 next_page = url_for('clock', employee_id=employee.id)
             return redirect(next_page)
         else:
@@ -431,8 +446,6 @@ def generate_random_password(length=12):
     alphabet = string.ascii_letters + string.digits + string.punctuation
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
-FIRST_NAME = "NEW"
-SURNAME = "USER"
 @app.route('/add_employee', methods=['GET', 'POST'])
 def add_employee():
     error = None
@@ -495,7 +508,9 @@ def set_details(token):
         # 🖼️ ZPRACOVÁNÍ PROFILOVKY (nepovinné)
         file = request.files.get('profile_picture')
         if file and file.filename and allowed_file(file.filename):
-            filename = f"{user.id}_{secrets.token_hex(8)}.{file.filename.rsplit('.', 1)[1].lower()}"
+            secure_name = secure_filename(file.filename)
+            ext = secure_name.rsplit('.', 1)[-1].lower() if '.' in secure_name else file.filename.rsplit('.', 1)[-1].lower()
+            filename = f"{user.id}_{secrets.token_hex(8)}.{ext}"
             relative_path = os.path.join('profile_pictures', filename).replace("\\", "/")
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
@@ -518,8 +533,6 @@ def set_details(token):
 
 
 
-from flask import redirect, url_for, request
-
 @app.route('/upload_profile_picture/<int:employee_id>', methods=['POST'])
 def upload_profile_picture(employee_id):
     if 'profile_picture' not in request.files:
@@ -530,7 +543,9 @@ def upload_profile_picture(employee_id):
         return redirect(url_for('edit_employee', employee_id=employee_id, error='No file selected'))
 
     if file and allowed_file(file.filename):
-        filename = f"{employee_id}_{secrets.token_hex(8)}.{file.filename.rsplit('.', 1)[1].lower()}"
+        secure_name = secure_filename(file.filename)
+        ext = secure_name.rsplit('.', 1)[-1].lower() if '.' in secure_name else file.filename.rsplit('.', 1)[-1].lower()
+        filename = f"{employee_id}_{secrets.token_hex(8)}.{ext}"
         relative_path = os.path.join('profile_pictures', filename).replace("\\", "/")
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
@@ -566,15 +581,17 @@ def delete_employee():
         employee_ids = request.form.get('employee_ids')
         if employee_ids:
             ids_to_delete = [int(emp_id) for emp_id in employee_ids.split(',') if emp_id.isdigit()]
-            employees_to_delete = Employee.query.filter(Employee.id.in_(ids_to_delete)).all()
-
-            non_admin_employees = [emp for emp in employees_to_delete if not emp.is_admin]
-
-            if not non_admin_employees:
+            non_admin_ids = [
+                emp.id for emp in Employee.query.filter(
+                    Employee.id.in_(ids_to_delete),
+                    Employee.is_admin == False
+                ).all()
+            ]
+            if not non_admin_ids:
                 error = "No valid employees selected for deletion."
             else:
-                for emp in non_admin_employees:
-                    db.session.delete(emp)
+                Attendance.query.filter(Attendance.employee_id.in_(non_admin_ids)).delete(synchronize_session=False)
+                deleted_count = Employee.query.filter(Employee.id.in_(non_admin_ids)).delete(synchronize_session=False)
                 db.session.commit()
         else:
             error = "No employees selected for deletion."
@@ -606,9 +623,6 @@ def logout():
     response = make_response(redirect(url_for('login')))
     response.set_cookie('theme', theme, max_age=60*60*24*30)
     return response
-
-# Global variable to store the scanned card UID
-scanned_card_uid = None
 
 def nfc_card_scanner():
     """Continuously scans for NFC cards and emits event via WebSocket."""
@@ -657,26 +671,6 @@ def nfc_card_scanner():
 
 threading.Thread(target=nfc_card_scanner, daemon=True).start()
 
-@app.route('/check_card', methods=['GET'])
-def check_card():
-    """Checks if an NFC card has been scanned and returns the redirect URL."""
-    global scanned_card_uid
-    if scanned_card_uid:
-        uid = hashlib.sha256(scanned_card_uid.encode()).hexdigest()  # Hash the UID
-        scanned_card_uid = None  # Reset the UID after processing
-        employee = Employee.query.filter_by(uid=uid).first()
-        if employee:
-            return jsonify({'redirect_url': url_for('employee_status', employee_id=employee.id)})
-    return jsonify({'redirect_url': None})
-
-@app.route('/check_card_uid', methods=['GET'])
-def check_card_uid():
-    global scanned_card_uid
-    if scanned_card_uid:
-        uid = scanned_card_uid
-        scanned_card_uid = None  # Reset after reading
-        return jsonify({'uid': uid})
-    return jsonify({'uid': None})
 
 @app.route('/fetch_attendance/<int:employee_id>', methods=['GET'])
 def fetch_attendance(employee_id):
@@ -751,4 +745,4 @@ if __name__ == '__main__':
     # Start ngrok tunnel
     public_url = ngrok.connect(5000)
     print(" * ngrok tunnel \"{}\" -> \"http://127.0.0.1:5000\"".format(public_url))
-    socketio.run(app, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)
+    socketio.run(app, debug=False, use_reloader=False)
