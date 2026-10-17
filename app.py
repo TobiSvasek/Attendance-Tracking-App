@@ -2,6 +2,7 @@ from flask import Flask, request, redirect, session, make_response
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from urllib.parse import urlsplit
 from flask_migrate import Migrate
 from flask_mail import Mail
@@ -495,7 +496,9 @@ def set_details(token):
         # 🖼️ ZPRACOVÁNÍ PROFILOVKY (nepovinné)
         file = request.files.get('profile_picture')
         if file and file.filename and allowed_file(file.filename):
-            filename = f"{user.id}_{secrets.token_hex(8)}.{file.filename.rsplit('.', 1)[1].lower()}"
+            secure_name = secure_filename(file.filename)
+            ext = secure_name.rsplit('.', 1)[-1].lower() if '.' in secure_name else file.filename.rsplit('.', 1)[-1].lower()
+            filename = f"{user.id}_{secrets.token_hex(8)}.{ext}"
             relative_path = os.path.join('profile_pictures', filename).replace("\\", "/")
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
@@ -530,7 +533,9 @@ def upload_profile_picture(employee_id):
         return redirect(url_for('edit_employee', employee_id=employee_id, error='No file selected'))
 
     if file and allowed_file(file.filename):
-        filename = f"{employee_id}_{secrets.token_hex(8)}.{file.filename.rsplit('.', 1)[1].lower()}"
+        secure_name = secure_filename(file.filename)
+        ext = secure_name.rsplit('.', 1)[-1].lower() if '.' in secure_name else file.filename.rsplit('.', 1)[-1].lower()
+        filename = f"{employee_id}_{secrets.token_hex(8)}.{ext}"
         relative_path = os.path.join('profile_pictures', filename).replace("\\", "/")
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
