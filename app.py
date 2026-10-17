@@ -566,15 +566,14 @@ def delete_employee():
         employee_ids = request.form.get('employee_ids')
         if employee_ids:
             ids_to_delete = [int(emp_id) for emp_id in employee_ids.split(',') if emp_id.isdigit()]
-            employees_to_delete = Employee.query.filter(Employee.id.in_(ids_to_delete)).all()
+            deleted_count = Employee.query.filter(
+                Employee.id.in_(ids_to_delete),
+                Employee.is_admin == False
+            ).delete(synchronize_session=False)
 
-            non_admin_employees = [emp for emp in employees_to_delete if not emp.is_admin]
-
-            if not non_admin_employees:
+            if deleted_count == 0:
                 error = "No valid employees selected for deletion."
             else:
-                for emp in non_admin_employees:
-                    db.session.delete(emp)
                 db.session.commit()
         else:
             error = "No employees selected for deletion."
