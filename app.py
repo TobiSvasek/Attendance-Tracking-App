@@ -431,8 +431,6 @@ def generate_random_password(length=12):
     alphabet = string.ascii_letters + string.digits + string.punctuation
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
-FIRST_NAME = "NEW"
-SURNAME = "USER"
 @app.route('/add_employee', methods=['GET', 'POST'])
 def add_employee():
     error = None
