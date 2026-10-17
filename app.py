@@ -751,4 +751,4 @@ if __name__ == '__main__':
     # Start ngrok tunnel
     public_url = ngrok.connect(5000)
     print(" * ngrok tunnel \"{}\" -> \"http://127.0.0.1:5000\"".format(public_url))
-    socketio.run(app, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)
+    socketio.run(app, debug=False, use_reloader=False)
