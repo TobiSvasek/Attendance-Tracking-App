@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, session, make_response
+from flask import Flask, request, redirect, session, make_response, current_app, url_for, render_template, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -9,7 +9,6 @@ from itsdangerous import URLSafeTimedSerializer
 import re
 from dotenv import load_dotenv
 import os
-from flask import current_app, url_for, render_template
 from flask_mail import Message
 import secrets
 import string
@@ -17,7 +16,6 @@ from pyngrok import ngrok, conf
 from smartcard.System import readers
 from smartcard.Exceptions import NoCardException
 from smartcard.util import toHexString
-from flask import jsonify
 import threading
 from datetime import datetime, timedelta
 import hashlib
@@ -517,8 +515,6 @@ def set_details(token):
     return render_template('set_details.html', employee=user, error=error)
 
 
-
-from flask import redirect, url_for, request
 
 @app.route('/upload_profile_picture/<int:employee_id>', methods=['POST'])
 def upload_profile_picture(employee_id):
