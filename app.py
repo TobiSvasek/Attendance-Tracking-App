@@ -2,6 +2,7 @@ from flask import Flask, request, redirect, session, make_response
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 from urllib.parse import urlsplit
 from flask_migrate import Migrate
 from flask_mail import Mail
@@ -29,6 +30,10 @@ from flask_socketio import SocketIO, emit
 
 app = Flask(__name__, template_folder='templates')
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+app.wsgi_app = ProxyFix(
+    app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1
+)
 
 load_dotenv()
 
@@ -128,7 +133,7 @@ def restrict_ip(allowed_ips):
         @wraps(f)
         def wrapped(*args, **kwargs):
             print("IP check running")
-            client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+            client_ip = request.remote_addr
             print("Client IP:", client_ip)
             if client_ip not in allowed_ips:
                 return go_back()
